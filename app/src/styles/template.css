@@ -1,0 +1,240 @@
+/* ===========================================================================
+   GEOMETRA catalogue template - "Accessories ~ LED"
+   All dimensions in millimetres, measured off the source PDF. This stylesheet
+   is used for BOTH the on-screen editor and the PDF export, so what is edited
+   is what is printed.
+   =========================================================================== */
+
+@page { size: A4 portrait; margin: 0; }
+
+:root {
+  --tint: #bbcadb;          /* the alternating panel colour, sampled from source */
+  --ink: #1a1a1a;
+  --badge-from: #14b5e8;
+  --badge-to: #ffffff;
+}
+
+.cat-page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+  overflow: hidden;
+  /* Keep colours faithful when Chrome prints. */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* --- locked template furniture ------------------------------------------ */
+.cat-chrome { position: absolute; left: 0; width: 210mm; display: block; }
+.cat-header  { top: 0;        height: 27.5mm; }
+.cat-gallery { top: 27.5mm;   height: 136.6mm; }
+.cat-footer  { top: 275.1mm;  height: 13.5mm; }
+.cat-chrome img { width: 100%; height: 100%; object-fit: fill; display: block; }
+
+/* --- flow area ----------------------------------------------------------- */
+.cat-flow { position: absolute; left: 0; width: 210mm; }
+.cat-flow--first { top: 165.7mm; }
+.cat-flow--cont  { top: 33mm; }
+
+.cat-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  padding: 0 5.14mm;
+  height: 54.1mm;
+}
+.cat-row + .cat-row { margin-top: 1mm; }
+
+/* --- Type A cell --------------------------------------------------------- */
+.cellA { position: relative; height: 54.1mm; padding-right: 1.6mm; }
+
+.badge {
+  position: absolute; top: 0; left: 0;
+  width: 6.7mm; height: 4.4mm;
+  background: linear-gradient(90deg, var(--badge-from) 0%, var(--badge-to) 100%);
+  color: #fff; font-weight: 600; font-size: 2.9mm; line-height: 4.4mm;
+  text-align: left; padding-left: 1.3mm;
+}
+
+.cellA .name {
+  position: absolute; top: 5.0mm; left: 0; right: 1.6mm;
+  font-size: 4.3mm; line-height: 4.5mm; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--ink); white-space: nowrap;
+}
+.cellA .colour {
+  position: absolute; top: 10.1mm; left: 0;
+  font-size: 2.7mm; line-height: 3mm; color: #2b2b2b; font-weight: 400;
+}
+.cellA .length {
+  position: absolute; top: 13.3mm; left: 0;
+  font-size: 2.7mm; line-height: 3mm; color: #2b2b2b; font-weight: 400;
+}
+
+.cellA .panel {
+  position: absolute; top: 17.1mm; left: 0; right: 1.6mm; height: 37mm;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+}
+.panel--tint { background: var(--tint); }
+
+/* Assets are stored with a pure-white ground, so multiply drops them onto
+   whatever colour the slot happens to be. That is what lets the alternating
+   tint stay positional. */
+.panel .photo   { width: 100%; height: 20.4mm; object-fit: contain; mix-blend-mode: multiply; }
+.panel .drawing { width: 100%; height: 14.6mm; object-fit: contain; mix-blend-mode: multiply; margin-top: 1.2mm; }
+
+/* --- Type B block -------------------------------------------------------- */
+.blockB { position: relative; height: 46mm; margin: 0 5.14mm; }
+.cat-row + .blockB, .blockB + .blockB { margin-top: 3mm; }
+
+.blockB .name {
+  position: absolute; top: 5.4mm; left: 0;
+  font-size: 4.2mm; line-height: 3.6mm; font-weight: 800; color: var(--ink);
+}
+.blockB .colour {
+  position: absolute; top: 9.1mm; left: 0;
+  font-size: 2.8mm; line-height: 2.8mm; color: #3a3a3a;
+}
+.blockB .length {
+  position: absolute; top: 12.0mm; left: 0;
+  font-size: 2.8mm; line-height: 2.8mm; color: #3a3a3a;
+}
+
+.blockB .panel {
+  position: absolute; top: 14.7mm; left: 0; right: 0; height: 31.3mm;
+  display: flex; align-items: stretch;
+}
+.blockB .finishes { flex: 1; display: flex; align-items: stretch; }
+.finish { flex: 1; position: relative; display: flex; flex-direction: column; }
+.finish .fphoto {
+  flex: 1; width: 100%; object-fit: contain; mix-blend-mode: multiply; min-height: 0;
+}
+.finish .fname {
+  text-align: center; font-size: 3.2mm; line-height: 4mm; color: #2b2b2b; padding-bottom: 0.6mm;
+}
+.finish .ribbon {
+  position: absolute; top: 2.2mm; left: 50%; transform: translateX(-20%);
+  background: #d9a441; color: #fff; font-size: 2.6mm; line-height: 4.2mm;
+  padding: 0 2.2mm; border-radius: 2.1mm; font-weight: 600;
+}
+.blockB .drawing {
+  width: 26mm; object-fit: contain; mix-blend-mode: multiply; align-self: center;
+}
+
+/* --- print --------------------------------------------------------------- */
+@media print {
+  body { margin: 0; background: #fff; }
+  .no-print { display: none !important; }
+  .cat-page { page-break-after: always; box-shadow: none; }
+  /* Only the very last page of the very last catalogue may run on. "Download all"
+     prints several .cat-doc blocks in one pass, and a per-doc :last-child would let
+     the next catalogue's first page share a sheet with the previous one's last. */
+  .cat-doc:last-child .cat-page:last-child { page-break-after: auto; }
+}
+
+/* ===========================================================================
+   PVC Marble template — "Edge Display / Aluminum accessories for PVC Marble"
+   Full-width rows stacked down the page, one product per row, separated by a
+   gold rule. Measured off pages 2-3 of the source PDF.
+   =========================================================================== */
+
+:root { --pvc-gold: #c9a227; }
+
+.cat-page--pvc { background: #fff; }
+.pvc-header { top: 0; height: 35mm; }
+
+.pvc-flow { position: absolute; top: 36mm; left: 0; width: 210mm; }
+
+.pvc-row { position: relative; height: 58mm; }
+.pvc-row--tall { height: 100mm; }
+
+/* --- left column: badge, name, size, series, dimension drawing ----------- */
+.pvc-left { position: absolute; left: 15.5mm; top: 0; width: 40mm; height: 100%; }
+
+.badge--pvc {
+  position: absolute; top: 0; left: 0;
+  width: 19mm; height: 4.7mm;
+  background: linear-gradient(90deg, #b08d3a 0%, #e8cf92 55%, #ffffff 100%);
+  color: #fff; font-weight: 600; font-size: 3mm; line-height: 4.7mm;
+  text-align: left; padding-left: 2.2mm;
+}
+
+.pvc-name   { position: absolute; top: 7.2mm;  left: 0; font-size: 4.6mm; line-height: 4.8mm;
+              font-weight: 800; color: var(--ink); white-space: nowrap; }
+.pvc-size   { position: absolute; top: 14.2mm; left: 0; font-size: 3.7mm; line-height: 4mm; color: #222; }
+.pvc-series { position: absolute; top: 20.0mm; left: 0; font-size: 3.7mm; line-height: 4mm; color: #222; }
+
+/* Assets are stored on a pure white ground, so multiply drops them onto the page
+   without carrying a background rectangle. */
+.pvc-drawing { position: absolute; top: 28mm; left: 0; width: 36mm; height: 21mm;
+               object-fit: contain; object-position: left top; mix-blend-mode: multiply; }
+
+/* --- right column: colour finishes, optional installed photo ------------- */
+.pvc-right { position: absolute; left: 58mm; right: 5mm; top: 3mm; height: 50mm; display: flex; gap: 3mm; }
+
+.pvc-variants { flex: 1; display: flex; align-items: stretch; gap: 2mm; }
+.pvc-variant  { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.pvc-vphoto   { flex: 1; width: 100%; object-fit: contain; mix-blend-mode: multiply; min-height: 0; }
+.pvc-vname    { text-align: center; font-size: 3.4mm; line-height: 5mm; color: #222; }
+.pvc-missing  { flex: 1; }
+
+.pvc-extra { width: 33mm; object-fit: contain; align-self: center; max-height: 44mm;
+             mix-blend-mode: multiply; }
+
+/* --- exception sub-row (product 6's White finish) ------------------------ */
+.pvc-exception { position: absolute; left: 58mm; right: 5mm; top: 55mm; height: 38mm;
+                 display: flex; align-items: center; gap: 6mm; }
+.pvc-exception .pvc-variant { flex: 0 0 34mm; height: 100%; }
+.pvc-exdrawing { width: 32mm; height: 28mm; object-fit: contain; mix-blend-mode: multiply; }
+.pvc-exnote    { font-size: 3.2mm; line-height: 4mm; color: #333; }
+
+/* --- the gold rule between products -------------------------------------- */
+.pvc-rule { position: absolute; left: 15.5mm; right: 5mm; bottom: 1.5mm; height: 0.4mm;
+            background: linear-gradient(90deg, var(--pvc-gold), #e6d9a8 70%, #fff); }
+
+/* ===========================================================================
+   Default catalogue page — used by any product family without a bespoke
+   template. A grid of product photos with the code and description beneath,
+   which is the shape most catalogues already use.
+   =========================================================================== */
+
+.cat-page--default { background: #fff; padding: 0; }
+
+/* A page kept whole from the source PDF: cover, application gallery, close-up
+   details, installation steps. It fills the sheet edge to edge and nothing of ours
+   is drawn over it — it is the original page, reprinted. `contain` rather than
+   `cover` because cropping a catalogue page to fit would cut off its own margins. */
+.cat-page--plate { background: #fff; padding: 0; overflow: hidden; }
+.cat-page--plate > img {
+  width: 210mm; height: 297mm; object-fit: contain; display: block;
+}
+
+.dp-header { position: absolute; top: 0; left: 0; width: 210mm;
+  display: flex; align-items: center; gap: 4mm; padding: 0 12mm;
+  background: linear-gradient(90deg, #143b52, #2b7fa8 60%, #7fc4e8);
+  color: #fff; overflow: hidden; }
+/* The lifted header is a picture of the real page, so it carries no padding and
+   must fill the strip edge to edge. */
+.dp-header--image { padding: 0; background: none; }
+.dp-header--image img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.dp-title { font-size: 6.5mm; font-weight: 800; letter-spacing: .01em; }
+.dp-subtitle { font-size: 3.4mm; opacity: .85; }
+
+.dp-flow { position: absolute; left: 0; width: 210mm; padding: 0 10mm; }
+.dp-row { display: grid; gap: 5mm; margin-bottom: 5mm; }
+
+.dp-item { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.badge--default {
+  position: absolute; top: 0; left: 0; z-index: 1;
+  min-width: 6mm; height: 4.4mm; padding: 0 1.6mm;
+  background: linear-gradient(90deg, #0d7fc4, #9ad4f0);
+  color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 4.4mm;
+}
+.dp-photo { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
+.dp-photo img { width: 100%; height: 100%; object-fit: contain; }
+.dp-missing { font-size: 3mm; color: #b07711; }
+
+.dp-name { text-align: center; font-size: 4.6mm; line-height: 5.4mm; font-weight: 800;
+  color: var(--ink); margin-top: 2mm; }
+.dp-sub { text-align: center; font-size: 3.1mm; line-height: 4mm; color: #4a4a4a; }
+.dp-drawing { width: 100%; max-height: 14mm; object-fit: contain; mix-blend-mode: multiply;
+  margin-top: 1.5mm; }

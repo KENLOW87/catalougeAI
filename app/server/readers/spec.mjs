@@ -1,0 +1,651 @@
+// A layout expressed as DATA, not code.
+//
+// The LED and PVC readers each hardcode two things: how to find a product, and
+// where each field sits relative to it. Neither needs to be code. Put both in a
+// spec and one engine reads any layout that follows the same shape — which means
+// a new catalogue can be taught through the UI instead of written by a developer.
+//
+// Boxes are in MILLIMETRES, relative to the top-left of the product's anchor, so a
+// spec is resolution-independent: measured on a 200 DPI preview, applied to a 400
+// DPI render.
+
+import { crop, trimToContent, keepInk, keepLargestBlob, whitenBackground, toBuffer, inkFromBright } from '../imageops.mjs'
+import { splitStrip } from '../split-strip.mjs'
+import { ocr, ocrLabel } from '../ocr.mjs'
+import { snapTo, repairSize, repairLength, repairCode, trimBleed, FINISHES } from './vocab.mjs'
+
+const dataUrl = img => `data:image/png;base64,${toBuffer(img).toString('base64')}`
+
+/**
+ * @typedef {Object} LayoutSpec
+ * @property {string} id
+ * @property {string} title
+ * @property {{rgb:[number,number,number], tolerance:number, arrangement:'row'|'column',
+ *            scanWidthMm?:number, minSizeMm?:number, maxSizeMm?:number}} anchor
+ * @property {Array<{key:string, type:'text'|'photo'|'lineart'|'finishes',
+ *                   box:{x:number,y:number,w:number,h:number},
+ *                   labelBox?:{x:number,y:number,w:number,h:number},
+ *                   repair?:'size'|'length', vocab?:boolean}>} fields
+ */
+
+const near = (r, g, b, c, tol) => Math.hypot(r - c[0], g - c[1], b - c[2]) < tol
+
+/** Merges indices into runs, tolerating small gaps. */
+function runs(profile, min, gap) {
+  const out = []
+  let s = -1, last = -1
+  profile.forEach((v, i) => {
+    if (v < min) return
+    if (s < 0) s = i
+    else if (i - last > gap) { out.push([s, last + 1]); s = i }
+    last = i
+  })
+  if (s >= 0) out.push([s, last + 1])
+  return out
+}
+
+/**
+ * Finds every product anchor on the page.
+ * @returns array of {x, y} in pixels — the top-left of each anchor
+ */
+/**
+ * Finds products that are marked by nothing but their own photograph.
+ *
+ * Many catalogues have no numbered badge at all — they are a grid of product
+ * photos with a caption under each. The product IS the photo block, so the anchor
+ * is found by shape rather than by colour: a large, solidly filled rectangle that
+ * is not a full-width banner.
+ *
+ * Returns anchors carrying their own width and height, which the field boxes then
+ * measure from — a caption sits under ITS block, whatever size that block is.
+ */
+export function findBlockAnchors(page, anchor) {
+  const { width, height, data } = page
+  const mm = width / 210
+  const n = width * height
+  const minSize = (anchor.minSizeMm ?? 25) * mm
+  const minFill = anchor.minFill ?? 0.62
+  const maxWidthFrac = anchor.maxWidthFrac ?? 0.5
+  const white = anchor.white ?? 246
+
+  const ink = new Uint8Array(n)
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    ink[i] = (data[p] < white || data[p + 1] < white || data[p + 2] < white) ? 1 : 0
+  }
+
+  const label = new Int32Array(n).fill(-1)
+  const stack = new Int32Array(n)
+  const boxes = []
+  for (let start = 0; start < n; start++) {
+    if (!ink[start] || label[start] >= 0) continue
+    const id = boxes.length
+    let sp = 0, area = 0, minX = width, maxX = -1, minY = height, maxY = -1
+    stack[sp++] = start
+    label[start] = id
+    while (sp > 0) {
+      const cur = stack[--sp]
+      area++
+      const cx = cur % width, cy = (cur / width) | 0
+      if (cx < minX) minX = cx
+      if (cx > maxX) maxX = cx
+      if (cy < minY) minY = cy
+      if (cy > maxY) maxY = cy
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue
+          const nx = cx + dx, ny = cy + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+          const ni = ny * width + nx
+          if (ink[ni] && label[ni] < 0) { label[ni] = id; stack[sp++] = ni }
+        }
+      }
+    }
+    // Only keep components big enough to be a product. At 400 DPI a page of
+    // photographs produces hundreds of thousands of tiny anti-aliasing specks, and
+    // holding an object for each one is pure memory pressure for no information.
+    const w = maxX - minX + 1, h = maxY - minY + 1
+    if (w < minSize || h < minSize) continue
+    boxes.push({ area, minX, maxX, minY, maxY, w, h })
+  }
+
+  const blocks = boxes.filter(b =>
+    b.w <= width * maxWidthFrac &&
+    b.area / (b.w * b.h) >= minFill)
+
+  if (!blocks.length) return []
+
+  // Find the page's PITCH — the repeating cell size most blocks agree on. A page
+  // can mix the ordinary cell width with a "hero" cell spanning two or more columns
+  // (a double-width featured product beside six ordinary ones): including those in
+  // the estimate would drag the median sideways, so only the size most blocks share
+  // decides the grid. This is for grid PROJECTION ONLY — recovering a cell whose
+  // product is too pale to pass the fill test. It must never be used to decide which
+  // REAL blocks are products; see `found` below.
+  const median = arr => { const v = [...arr].sort((a, b) => a - b); return v[v.length >> 1] }
+  const mw = median(blocks.map(b => b.w)), mh = median(blocks.map(b => b.h))
+  const tol = anchor.sizeToleranceMm ? anchor.sizeToleranceMm * mm : Math.max(mw, mh) * 0.35
+  const kept = blocks.filter(b => Math.abs(b.w - mw) <= tol && Math.abs(b.h - mh) <= tol)
+  const use = kept.length >= 2 ? kept : blocks
+
+  // --- fill in the grid ------------------------------------------------------
+  //
+  // Detection alone is unreliable on a page of near-WHITE products: a white marble
+  // sheet on a white page is separated from it only by a faint edge, so its region
+  // breaks up and fails the fill test while its darker neighbours pass. The same
+  // happens where a sticker overlaps a corner.
+  //
+  // But these pages are grids. Once a few blocks are found the pitch is known, so
+  // the rest of the cells can be projected — and then CONFIRMED by checking each
+  // one actually contains something. Projection supplies the position; ink decides
+  // whether a product is really there.
+  const cluster = (values, tol) => {
+    const out = []
+    for (const v of [...values].sort((a, b) => a - b)) {
+      const last = out[out.length - 1]
+      if (last && v - last.at <= tol) { last.at = (last.at * last.n + v) / (last.n + 1); last.n++ }
+      else out.push({ at: v, n: 1 })
+    }
+    return out.map(c => Math.round(c.at))
+  }
+
+  const cols = cluster(use.map(b => b.minX), mw * 0.5)
+  const rowsY = cluster(use.map(b => b.minY), mh * 0.5)
+
+  // A cell counts as occupied if a decent share of it is not page-white. The
+  // threshold is deliberately loose: pale marble is barely darker than the page.
+  const occupied = (x, y) => {
+    let hit = 0, total = 0
+    const step = Math.max(2, Math.round(mw / 40))
+    for (let yy = y; yy < Math.min(height, y + mh); yy += step) {
+      for (let xx = x; xx < Math.min(width, x + mw); xx += step) {
+        total++
+        const i = (yy * width + xx) * 4
+        if (data[i] < 252 || data[i + 1] < 252 || data[i + 2] < 252) hit++
+      }
+    }
+    return total > 0 && hit / total >= 0.5
+  }
+
+  // A GENUINE block is always kept as itself, at its OWN measured size — including
+  // one wider than the ordinary pitch. `maxWidthFrac` and `minFill` already ruled
+  // out page furniture above, so a block that reaches here really is a product; a
+  // "hero" card spanning two columns (page 3's PW07, PS FLAT BAR) is one product,
+  // not a slice of one. Earlier this synthesised a STANDARD-size cell for every grid
+  // position instead, which truncated a wide block to one column's width and then,
+  // because nothing stopped the projection from landing a SECOND cell on the same
+  // block's leftover ink, duplicated it — the real product beside it went unfound.
+  const found = blocks.map(b => ({ x: b.minX, y: b.minY, w: b.w, h: b.h }))
+
+  // A projected grid cell only gets to synthesise a cell when NO real block already
+  // covers that position — checked by its centre, the same test `unique` uses below.
+  const coveredByReal = (cx, cy) => found.some(b => cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h)
+
+  for (const y of rowsY) {
+    for (const x of cols) {
+      const cx = x + mw / 2, cy = y + mh / 2
+      if (coveredByReal(cx, cy)) continue
+      if (occupied(x, y)) found.push({ x, y, w: mw, h: mh })
+    }
+  }
+
+  // ONE PHOTO, ONE PRODUCT. A page can hold two grids of different pitch — PU Stone
+  // page 4 has a row of four above a row of three — and clustering every left edge
+  // together then produces two column positions that both land on the same photo.
+  // That photo was emitted twice and became two identical products.
+  //
+  // Overlap is the test, not position: however a cell arrived, if its centre sits
+  // inside a block already found, it is that same block again.
+  const unique = []
+  for (const b of found) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2
+    const dup = unique.some(u => cx >= u.x && cx <= u.x + u.w && cy >= u.y && cy <= u.y + u.h)
+    if (!dup) unique.push(b)
+  }
+
+  // Reading order: left to right, then down. Rows are grouped by a tolerance so a
+  // few pixels of vertical drift does not scramble the order.
+  const rowTol = mh * 0.5
+  return unique
+    .map(b => ({ ...b, bandCount: 1, block: true }))
+    .sort((a, c) => (Math.abs(a.y - c.y) <= rowTol ? a.x - c.x : a.y - c.y))
+}
+
+export function findAnchors(page, anchor) {
+  // A layout with no coloured mark finds its products by shape instead.
+  if (anchor?.type === 'blocks') return findBlockAnchors(page, anchor)
+
+  const { width, height, data } = page
+  const mm = width / 210
+  const { rgb, tolerance = 60, arrangement = 'row' } = anchor
+  const minSize = (anchor.minSizeMm ?? 2) * mm
+  const maxSize = (anchor.maxSizeMm ?? 10) * mm
+  const scanX = anchor.scanWidthMm ? Math.round(anchor.scanWidthMm * mm) : width
+
+  const hit = (x, y) => {
+    const i = (y * width + x) * 4
+    return near(data[i], data[i + 1], data[i + 2], rgb, tolerance)
+  }
+
+  // Horizontal bands carrying the anchor colour.
+  const rowProfile = []
+  for (let y = 0; y < height; y++) {
+    let n = 0
+    for (let x = 0; x < scanX; x++) if (hit(x, y)) n++
+    rowProfile.push(n)
+  }
+  // Low threshold on purpose: a featured product has a SINGLE anchor, and a
+  // threshold tuned for a full row of them skips it silently.
+  const bands = runs(rowProfile, Math.max(2, Math.round(mm * 2)), Math.round(mm * 2))
+    .filter(([a, b]) => b - a >= minSize && b - a <= maxSize)
+
+  // An anchor is a SOLID mark. Line art in the same colour is not one — PVC's gold
+  // dimension drawings sit in the same left column as its gold badges, and without
+  // this test they register as extra products and shift every field box.
+  // Measured: a badge fills ~62% of its box, a gold drawing ~5%.
+  const minFill = anchor.minFill ?? 0.3
+  const fillOf = (x0, x1, y0, y1) => {
+    let h = 0, t = 0
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { t++; if (hit(x, y)) h++ }
+    return t ? h / t : 0
+  }
+
+  const anchors = []
+  for (const [y0, y1] of bands) {
+    const colProfile = []
+    for (let x = 0; x < scanX; x++) {
+      let n = 0
+      for (let y = y0; y < y1; y++) if (hit(x, y)) n++
+      colProfile.push(n)
+    }
+    const cols = runs(colProfile, Math.max(1, Math.round((y1 - y0) * 0.25)), Math.round(mm * 3))
+      .filter(([a, b]) => b - a >= minSize * 0.6)
+      .filter(([a, b]) => fillOf(a, b, y0, y1) >= minFill)
+    for (const [x0] of cols) {
+      anchors.push({ x: x0, y: y0, bandTop: y0, bandBottom: y1, bandCount: cols.length })
+    }
+  }
+
+  // In a column layout every badge shares the same left edge. Anything off that
+  // line is not a product marker — a stray run inside PVC's gold dimension drawing
+  // survived the fill test at x=24.3mm while every real badge sat at 15.6mm, and
+  // became a phantom fifth product.
+  if (arrangement === 'column' && anchors.length > 2) {
+    const xs = anchors.map(a => a.x).sort((p, q) => p - q)
+    const medianX = xs[xs.length >> 1]
+    const tol = (anchor.columnToleranceMm ?? 4) * mm
+    const kept = anchors.filter(a => Math.abs(a.x - medianX) <= tol)
+    if (kept.length >= 2) anchors.length = 0, anchors.push(...kept)
+  }
+
+  // Reading order.
+  anchors.sort((a, b) => a.y - b.y || a.x - b.x)
+  return anchors
+}
+
+const cleanPhoto = img => {
+  const { img: white } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+  return trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
+}
+// `inkCut` differs per layout: LED drawings are black (185), PVC's are gold (210).
+const cleanLineart = (img, cut) => trimToContent(keepInk(img, cut), { gap: 60, pad: 6 })
+
+/** Reads one page using a spec. */
+export async function readWithSpec(page, spec) {
+  const { width } = page
+  const mm = width / 210
+  const products = []
+  const warnings = []
+  const anchors = findAnchors(page, spec.anchor)
+
+  if (!anchors.length) return { products, warnings: ['No products found with this layout.'] }
+
+  const px = (v) => Math.round(v * mm)
+
+  /**
+   * Places a field box against its anchor.
+   *
+   * A badge anchor is a fixed mark, so everything is measured from its top-left.
+   * A BLOCK anchor is the product photo itself and varies in size, so a field can
+   * ask to be measured from the block's bottom (`from: 'blockBottom'`) and to
+   * inherit the block's width (`w: 0`) — which is what a caption under a photo
+   * actually wants, whatever size that photo happens to be.
+   */
+  const boxAt = (a, box, field) => {
+    const fromBottom = field?.from === 'blockBottom' && a.block
+    const originY = fromBottom ? a.y + a.h : a.y
+    const w = (box.w === 0 && a.block) ? a.w : px(box.w)
+    const h = (box.h === 0 && a.block) ? a.h : px(box.h)
+    return { x: a.x + px(box.x), y: originY + px(box.y), w, h }
+  }
+
+  // A layout can hold more than one KIND of product laid out differently — LED has
+  // narrow grid cells and a full-width featured block. They are told apart by how
+  // many anchors share the band: a grid row has several, a featured block has one.
+  const kinds = spec.kinds ?? [{ id: 'default', fields: spec.fields }]
+  const kindFor = a => kinds.find(k => {
+    const w = k.when
+    if (!w) return true
+    if (w.minAnchorsInBand != null && a.bandCount < w.minAnchorsInBand) return false
+    if (w.maxAnchorsInBand != null && a.bandCount > w.maxAnchorsInBand) return false
+    return true
+  }) ?? kinds[kinds.length - 1]
+
+  for (const a of anchors) {
+    const kind = kindFor(a)
+    const product = { _spec: spec.id, _kind: kind.id }
+    for (const f of kind.fields) {
+      // A block anchor IS the product photo, so that field needs no box at all.
+      if (f.type === 'blockPhoto') {
+        product[f.key] = dataUrl(crop(page, a.x, a.y, a.w, a.h))
+        continue
+      }
+
+      const b = boxAt(a, f.box, f)
+      const region = crop(page, b.x, b.y, b.w, b.h)
+
+      if (f.type === 'text') {
+        // A text box is a SEARCH REGION, not an exact crop.
+        //
+        // These pages were laid out by hand, so the gap between a product's anchor
+        // and its text drifts — measured across one page: 8.3, 8.7, 11.1, 9.4 mm.
+        // A fixed box clipped "END Profile" in half and OCR returned "EEE EES Ee".
+        // So find the actual text lines inside the region and take the Nth one,
+        // which is also how a person would describe it: name first, size second.
+        let target = region
+        // Absolute page-pixel [top, bottom] of whatever text this field actually
+        // found — set below, whichever path is taken. A later `photo` field can
+        // measure its own box from this instead of a fixed offset, which is what
+        // lets the SAME card template place its photo correctly whether the title
+        // above it takes one line ("PW01") or two ("GOLD" / "PW02").
+        let bounds = null
+        let value = null       // set directly by joinLines; otherwise read below
+        if (f.joinLines) {
+          // The title is however many lines it actually is, not a fixed count —
+          // "GOLD" stacked over "PW02" is one name, "GOLD PW02", not a box tall
+          // enough for one line that clips the second to a sliver ("oo"). But the
+          // box has to be tall enough to hold a two-line title, and on a one-line
+          // card that same extra height reaches down into the photo beneath it —
+          // a product edge or shadow is dark enough to register as a spurious
+          // "line" of its own, by this same measure of "a band of dark pixels".
+          //
+          // A real continuation line sits close under the first, at TITLE line
+          // spacing; the gap before genuine photo content starts is bigger, by
+          // design (the two are not meant to touch). So only lines that follow
+          // closely — and are a similar height, not a thick band of photo ink —
+          // are accepted as more of the title. The first line is always kept.
+          //
+          // Light text is binarised ONCE, over the whole box, and every line is
+          // then found and read from THAT buffer — a mid-tone gradient background
+          // confused a per-pixel "is this bright" scan of the raw page (it is not
+          // flat, so the same threshold that correctly picks out the glyphs over
+          // one patch of background mis-fires over another), where the same test
+          // applied after `inkFromBright` has already turned the whole box into
+          // clean black-on-white has nothing left to be ambiguous about.
+          const inkedBox = f.lightText ? inkFromBright(region) : null
+          let lines = inkedBox
+            ? findTextLinesInImage(inkedBox, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
+            : findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
+          if (lines.length > 1) {
+            const h0 = lines[0][1] - lines[0][0]
+            const kept = [lines[0]]
+            for (let i = 1; i < lines.length; i++) {
+              const gap = lines[i][0] - kept[kept.length - 1][1]
+              const h = lines[i][1] - lines[i][0]
+              if (gap > px(f.lineGapMaxMm ?? 3) || h > h0 * 1.8 || h < h0 * 0.4) break
+              kept.push(lines[i])
+            }
+            lines = kept
+          }
+          if (!lines.length) {
+            warnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
+            product[f.key] = ''
+            if (f.required) product.__reject = true
+            continue
+          }
+          const pad = px(1.2)
+          const words = []
+          for (const [t0, t1] of lines) {
+            const target1 = inkedBox
+              ? crop(inkedBox, 0, Math.max(0, t0 - pad), inkedBox.width, t1 - t0 + pad * 2)
+              : crop(page, b.x, Math.max(0, t0 - pad), b.w, t1 - t0 + pad * 2)
+            const { text } = await ocrLabel(target1, f.whitelist ? { whitelist: f.whitelist } : {})
+            const word = trimBleed(text.trim())
+            if (word) words.push(word)
+          }
+          value = words.join(' ')
+          // Bounds go out in ABSOLUTE page coordinates regardless of which buffer
+          // they were measured in, so a later field can use them the same way.
+          const toAbs = inkedBox ? (y => y + b.y) : (y => y)
+          bounds = [toAbs(lines[0][0]), toAbs(lines[lines.length - 1][1])]
+        } else {
+          if (f.line) {
+            const lines = findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7, f.lightText)
+            const chosen = lines[f.line - 1]
+            if (chosen) {
+              const pad = px(1.2)
+              target = crop(page, b.x, Math.max(0, chosen[0] - pad), b.w, chosen[1] - chosen[0] + pad * 2)
+              bounds = chosen
+            } else {
+              warnings.push(`${product.name || 'a product'}: expected ${f.line} text lines for "${f.key}", found ${lines.length}.`)
+              product[f.key] = ''
+              if (f.required) product.__reject = true
+              continue
+            }
+          }
+          // Some panel-style cards print the title in light text on a mid-tone
+          // background. Measured at only ~55 luminance apart, plain inversion just
+          // swaps which side is dark without adding contrast — hard-threshold the
+          // bright pixels into solid ink instead, the same move keepInk makes for
+          // dark ink on line art, mirrored.
+          if (f.lightText) target = inkFromBright(target)
+          const { text } = await ocrLabel(target, f.whitelist ? { whitelist: f.whitelist } : {})
+          value = trimBleed(text.replace(new RegExp(`^\\s*${f.stripPrefix ?? ''}\\s*[:;.]?\\s*`, 'i'), ''))
+        }
+        if (f.repair === 'size') value = repairSize(value).value
+        if (f.repair === 'code') value = repairCode(value).value
+        if (f.repair === 'length') value = repairLength(value).value
+        // Names must stay verbatim, so vocabulary snapping is opt-in per field.
+        if (f.vocab) value = snapTo(value, FINISHES).value || value
+        product[f.key] = value
+        if (bounds) { product.__bounds ??= {}; product.__bounds[f.key] = bounds }
+        // A field can be REQUIRED to look like its real content, not merely present.
+        // The block anchor finds every solidly-filled rectangle on the page, and on
+        // a mixed page that includes things that are not products at all — a
+        // lifestyle photo filling a leftover grid cell, a decorative demo strip with
+        // its own stray caption. A genuine product card always carries this field
+        // (its dimension line, say); one that does not is not a product, and the
+        // whole anchor is dropped rather than imported as a blank entry to fix later.
+        if (f.required && (!value || (f.matches && !f.matches.test(value)))) product.__reject = true
+      } else if (f.type === 'photo') {
+        // A card's title can be one line or two, and its total height can vary
+        // ("hero" cards spanning extra columns are shorter overall) — a photo box
+        // measured at a fixed offset from the top then either starts inside the
+        // title's own text, or runs on into the caption below it, baking both into
+        // what is supposed to be a clean product shot. `topField`/`bottomField`
+        // pin the photo to whatever the NAME and CAPTION fields actually measured
+        // on THIS card, found earlier in the same field list, instead of a
+        // one-size offset. Falls back to the static box when neither is given.
+        if (f.topField || f.bottomField) {
+          const top = f.topField && product.__bounds?.[f.topField]
+            ? product.__bounds[f.topField][1] + px(f.topMarginMm ?? 2) : b.y
+          const bottom = f.bottomField && product.__bounds?.[f.bottomField]
+            ? product.__bounds[f.bottomField][0] - px(f.bottomMarginMm ?? 2) : b.y + b.h
+          const dyn = crop(page, b.x, top, b.w, Math.max(1, bottom - top))
+          product[f.key] = dataUrl(cleanPhoto(dyn))
+        } else {
+          product[f.key] = dataUrl(cleanPhoto(region))
+        }
+      } else if (f.type === 'lineart') {
+        product[f.key] = dataUrl(cleanLineart(region, spec.inkCut ?? 185))
+      } else if (f.type === 'finishes') {
+        const parts = splitStrip(region, { minAreaFrac: 0.012 })
+
+        // The label box is a SEARCH REGION, like a text box. Row heights vary
+        // between pages (PVC page 3's rows are taller than page 2's), so a fixed
+        // offset landed off the labels and OCR returned noise like "So/I/I/EE".
+        // Snap to the last band of text inside the region instead.
+        let lb = f.labelBox ? boxAt(a, f.labelBox, { from: f.labelFrom }) : null
+        if (lb) {
+          const bands = findTextLines(page, lb, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
+          if (bands.length) {
+            const [t, bt] = bands[bands.length - 1]
+            const pad = px(1)
+            lb = { x: lb.x, y: Math.max(0, t - pad), w: lb.w, h: bt - t + pad * 2 }
+          }
+        }
+        const list = []
+        let leftover = null
+
+        // Touching diagonal bars merge into one blob. When labels are available and
+        // outnumber the blobs, use the label centres to decide the boundaries.
+        const labelRuns = lb ? labelColumns(page, lb.x, lb.x + lb.w, lb.y, lb.y + lb.h, mm) : []
+        const useLabels = labelRuns.length >= 2 && labelRuns.length > parts.length
+
+        if (useLabels) {
+          const centres = labelRuns.map(([p0, p1]) => (p0 + p1) / 2)
+          for (let k = 0; k < labelRuns.length; k++) {
+            const left = k === 0 ? b.x : Math.round((centres[k - 1] + centres[k]) / 2)
+            const right = k === labelRuns.length - 1 ? b.x + b.w : Math.round((centres[k] + centres[k + 1]) / 2)
+            const { text } = await ocrLabel(crop(page, labelRuns[k][0] - px(2), lb.y,
+              labelRuns[k][1] - labelRuns[k][0] + px(4), lb.h))
+            list.push({
+              name: snapTo(text, FINISHES).value || text,
+              photo: dataUrl(cleanPhoto(crop(page, left, b.y, right - left, b.h))),
+            })
+          }
+        } else {
+          for (const part of parts) {
+            let label = ''
+            if (lb) {
+              const { text } = await ocrLabel(crop(page, b.x + part.x0, lb.y, part.x1 - part.x0, lb.h))
+              label = text
+            }
+            const snapped = snapTo(label, FINISHES)
+            // A block with no readable label beneath it is a detail photo, not a
+            // finish — that is how these templates distinguish the two.
+            if (lb && !snapped.value) { leftover ??= dataUrl(cleanPhoto(part.img)); continue }
+            list.push({ name: snapped.value || label, photo: dataUrl(cleanPhoto(part.img)) })
+          }
+        }
+        product[f.key] = list
+        if (leftover && f.leftoverKey) product[f.leftoverKey] = leftover
+        if (!list.length) warnings.push(`${product.name || 'a product'}: no finishes found.`)
+
+        // If most finish names are not real words, the label band was probably the
+        // wrong one — a product carrying an exception note underneath, for example.
+        // Say so rather than import nonsense.
+        const junk = list.filter(v => !FINISHES.includes(v.name)).length
+        if (list.length && junk > list.length / 2) {
+          warnings.push(`${product.name || 'a product'}: its finish labels did not read ` +
+            `(${list.map(v => v.name || '?').join(', ')}). Check this one — it may carry an ` +
+            'exception note that confused the label search.')
+        }
+      }
+    }
+    const rejected = product.__reject
+    delete product.__reject
+    delete product.__bounds
+    if (!rejected) products.push(product)
+  }
+
+  // Never auto-correct a measurement: report the disagreement instead.
+  const allFields = (spec.kinds ?? [{ fields: spec.fields }]).flatMap(k => k.fields ?? [])
+  const sizeField = allFields.find(f => f.repair === 'size')
+  if (sizeField) {
+    const seen = [...new Set(products.map(p => p[sizeField.key]).filter(Boolean))]
+    if (seen.length > 1) {
+      warnings.push(`Sizes did not read consistently: ${seen.join(', ')}. ` +
+        'Those digits look alike at this resolution — check them before importing.')
+    }
+  }
+
+  // Hand back where the products sat. The caller uses it to lift the page header —
+  // everything above the first product — straight off the source page.
+  return { products, warnings, anchors }
+}
+
+/** Column runs of near-black text inside a band — i.e. where labels sit. */
+function labelColumns(page, x0, x1, y0, y1, mm) {
+  const { width, data } = page
+  const cols = []
+  for (let x = x0; x < x1; x++) {
+    let n = 0
+    for (let y = y0; y < y1; y++) {
+      const i = (y * width + x) * 4
+      if (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2] < 120) n++
+    }
+    cols.push(n > 0)
+  }
+  const out = []
+  let s = -1, last = -1
+  cols.forEach((v, i) => {
+    if (!v) return
+    if (s < 0) s = i
+    else if (i - last > mm * 4) { out.push([x0 + s, x0 + last + 1]); s = i }
+    last = i
+  })
+  if (s >= 0) out.push([x0 + s, x0 + last + 1])
+  return out.filter(([p0, p1]) => p1 - p0 > mm * 3)
+}
+
+/**
+ * Rows of dark text inside a box, as bands.
+ * Used to snap a text field onto the line it actually occupies, rather than
+ * trusting a fixed offset on a hand-laid page.
+ *
+ * `light` flips the test for a panel card's title: it is WHITE text on a mid-tone
+ * or dark photo background, so "dark pixels" would describe the background itself
+ * (a big single band covering the whole panel), not the letters. Counting BRIGHT
+ * pixels instead picks out the actual glyphs the same way `inkFromBright` does for
+ * reading them.
+ */
+function findTextLines(page, b, mm, gapMm = 0.7, light = false) {
+  const { width, data } = page
+  const x0 = Math.max(0, b.x), x1 = Math.min(width, b.x + b.w)
+  // Low on purpose. A short word in a wide box ("Silver" across 30mm) only puts a
+  // handful of dark pixels on each row; a higher floor fragmented that band and the
+  // colour line disappeared entirely. Specks are rejected by the height filter below.
+  const minInk = Math.max(2, Math.round(mm * 0.4))
+  const bands = []
+  let s = -1, last = -1
+  for (let y = b.y; y < b.y + b.h; y++) {
+    let n = 0
+    for (let x = x0; x < x1; x++) {
+      const i = (y * width + x) * 4
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+      if (light ? lum >= 225 : lum < 120) n++
+    }
+    if (n >= minInk) { if (s < 0) s = y; last = y }
+    else if (s >= 0 && y - last > mm * gapMm) { bands.push([s, last + 1]); s = -1 }
+  }
+  if (s >= 0) bands.push([s, last + 1])
+  // Drop specks; keep anything tall enough to be a line of type.
+  return bands.filter(([a, c]) => c - a >= mm * 1.6)
+}
+
+/**
+ * Same row-band scan as `findTextLines`, but over a STANDALONE already-binarised
+ * image (local coordinates, y starts at 0) instead of the page. Used for light text
+ * on a panel card: `inkFromBright` turns the whole search box into clean black ink
+ * on white in one pass, and scanning THAT for dark bands finds real glyph lines
+ * reliably — a per-pixel brightness test re-applied to the raw page instead
+ * mis-fired on an uneven gradient background, which is not flat the way a plain
+ * mid-tone panel is.
+ */
+function findTextLinesInImage(img, mm, gapMm = 0.7) {
+  const { width, height, data } = img
+  const minInk = Math.max(2, Math.round(mm * 0.4))
+  const bands = []
+  let s = -1, last = -1
+  for (let y = 0; y < height; y++) {
+    let n = 0
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      if (data[i] < 120) n++
+    }
+    if (n >= minInk) { if (s < 0) s = y; last = y }
+    else if (s >= 0 && y - last > mm * gapMm) { bands.push([s, last + 1]); s = -1 }
+  }
+  if (s >= 0) bands.push([s, last + 1])
+  return bands.filter(([a, c]) => c - a >= mm * 1.6)
+}
