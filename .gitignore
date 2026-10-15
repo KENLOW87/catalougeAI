@@ -5,3 +5,4 @@ extract/
 .tmp/
 *.pdf
 *.log
+app/__scratch_*.mjs

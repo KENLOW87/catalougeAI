@@ -12,7 +12,7 @@
 import { crop, trimToContent, keepInk, keepLargestBlob, whitenBackground, toBuffer, inkFromBright } from '../imageops.mjs'
 import { splitStrip } from '../split-strip.mjs'
 import { ocr, ocrLabel } from '../ocr.mjs'
-import { snapTo, repairSize, repairLength, repairCode, trimBleed, FINISHES } from './vocab.mjs'
+import { snapTo, repairSize, repairLength, repairLengthParen, repairFirstMm, repairCode, snapCode, trimBleed, FINISHES } from './vocab.mjs'
 
 const dataUrl = img => `data:image/png;base64,${toBuffer(img).toString('base64')}`
 
@@ -210,9 +210,93 @@ export function findBlockAnchors(page, anchor) {
     .sort((a, c) => (Math.abs(a.y - c.y) <= rowTol ? a.x - c.x : a.y - c.y))
 }
 
+/**
+ * Finds products marked by a big BOLD HEADING rather than a badge or a photo
+ * block — "C-R80" / "C-R100" printed oversized inside one wide feature block that
+ * holds two products ("ALUMINIUM CORNER EDGE"), too wide for `blocks`'s own
+ * maxWidthFrac and too broken up by its own paragraph text and diagrams to ever
+ * register as one solidly-filled rectangle.
+ *
+ * A heading is found the same way a person would describe it: taller than body
+ * text (`minHeightMm`/`maxHeightMm` on a row-band of dark ink), and a compact run
+ * of ink within that band (`minWidthMm`/`maxWidthMm`) — which is what tells the
+ * actual heading apart from the body paragraph sharing the same row height, a much
+ * longer run of ordinary-weight text wrapping across the same lines.
+ */
+export function findTextBlockAnchors(page, anchor) {
+  const { width, height, data } = page
+  const mm = width / 210
+  const darkCut = anchor.darkCut ?? 80
+  const minHeightMm = anchor.minHeightMm ?? 6
+  const maxHeightMm = anchor.maxHeightMm ?? 15
+  const minWidthMm = anchor.minWidthMm ?? 15
+  const maxWidthMm = anchor.maxWidthMm ?? 50
+  const minRowInk = anchor.minRowInk ?? 10
+  const minColInk = anchor.minColInk ?? 3
+  const rowGapMm = anchor.rowGapMm ?? 1
+  const colGapMm = anchor.colGapMm ?? 3
+  // Scanning the FULL page width lets a dense body paragraph elsewhere on the same
+  // row keep the row-band "open" (its line-to-line gap is under a millimetre, far
+  // less than a heading's own leading) and swallow the real heading into one long
+  // band spanning the whole paragraph. A heading sits in a known horizontal slice
+  // of the page (the right-hand side of a feature block, say), so the scan can be
+  // confined there — scanX1Frac defaults to the right HALF, which is also where
+  // `blocks`'s own maxWidthFrac draws the same "not a banner" line.
+  const scanX0 = Math.round((anchor.scanX0Frac ?? 0.5) * width)
+  const scanX1 = Math.round((anchor.scanX1Frac ?? 1) * width)
+
+  const lumAt = (x, y) => {
+    const i = (y * width + x) * 4
+    return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  }
+
+  // Row-bands tall enough to be a HEADING, not a line of body text.
+  const rowBands = []
+  let s = -1, last = -1
+  for (let y = 0; y < height; y++) {
+    let n = 0
+    for (let x = scanX0; x < scanX1; x += 2) if (lumAt(x, y) < darkCut) n++
+    if (n >= minRowInk) { if (s < 0) s = y; last = y }
+    else if (s >= 0 && y - last > mm * rowGapMm) { rowBands.push([s, last + 1]); s = -1 }
+  }
+  if (s >= 0) rowBands.push([s, last + 1])
+  const bands = rowBands.filter(([a, c]) => {
+    const h = (c - a) / mm
+    return h >= minHeightMm && h <= maxHeightMm
+  })
+
+  // Within a tall-enough band, a compact column RUN is the heading itself — a
+  // paragraph sharing the same row height instead runs on far wider.
+  const anchors = []
+  for (const [y0, y1] of bands) {
+    const colDark = new Array(scanX1).fill(0)
+    for (let x = scanX0; x < scanX1; x++) {
+      let n = 0
+      for (let y = y0; y < y1; y++) if (lumAt(x, y) < darkCut) n++
+      colDark[x] = n
+    }
+    const runs = []
+    let cs = -1, clast = -1
+    for (let x = scanX0; x < scanX1; x++) {
+      if (colDark[x] >= minColInk) { if (cs < 0) cs = x; clast = x }
+      else if (cs >= 0 && x - clast > mm * colGapMm) { runs.push([cs, clast]); cs = -1 }
+    }
+    if (cs >= 0) runs.push([cs, clast])
+    for (const [x0, x1] of runs) {
+      const wmm = (x1 - x0) / mm
+      if (wmm >= minWidthMm && wmm <= maxWidthMm) {
+        anchors.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0, bandCount: 1, block: true })
+      }
+    }
+  }
+  anchors.sort((a, b) => a.y - b.y || a.x - b.x)
+  return anchors
+}
+
 export function findAnchors(page, anchor) {
   // A layout with no coloured mark finds its products by shape instead.
   if (anchor?.type === 'blocks') return findBlockAnchors(page, anchor)
+  if (anchor?.type === 'textBlocks') return findTextBlockAnchors(page, anchor)
 
   const { width, height, data } = page
   const mm = width / 210
@@ -283,11 +367,133 @@ export function findAnchors(page, anchor) {
 }
 
 const cleanPhoto = img => {
-  const { img: white } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
+  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
 }
 // `inkCut` differs per layout: LED drawings are black (185), PVC's are gold (210).
 const cleanLineart = (img, cut) => trimToContent(keepInk(img, cut), { gap: 60, pad: 6 })
+
+// Product codes deserve a second, stricter OCR pass. A normal text whitelist lets
+// Tesseract choose lowercase l/O/S and punctuation, which is exactly where short
+// catalogue codes fail. The strict pass removes those alternatives; repairCode then
+// resolves the remaining O/0, I/1 and S/5 confusions. If the strict read does not
+// form a plausible code, keep the normal read rather than inventing one.
+async function readCodeLabel(img, f) {
+  const base = await ocrLabel(img, f.whitelist ? { whitelist: f.whitelist } : {})
+  const strict = await ocrLabel(img, { whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' })
+  const fixed = repairCode(strict.text, { requireDigit: !f.looseCode }).value
+  const compact = fixed.replace(/\s+/g, '')
+  if (/^[A-Z]{1,8}\d{1,6}[A-Z]?$/.test(compact)) return fixed
+  return trimBleed(base.text)
+}
+
+/**
+ * Reads a box as however many lines of text it actually holds, and joins them —
+ * "GOLD" stacked over "PW02" becomes "GOLD PW02", one line stays one word. Shared
+ * by `joinLines` (one title, N lines) and `parts` (several differently-styled
+ * titles side by side, each read this way and then joined together).
+ *
+ * A real continuation line sits close under the first, at title line spacing; the
+ * gap before genuine photo content starts is bigger, by design. So once the first
+ * line is found, only further lines that follow closely — and are a similar
+ * height, not a thick band of photo ink — are accepted as more of this title.
+ *
+ * Light text is binarised ONCE, over the whole box, and every line is then found
+ * and read from THAT buffer — a mid-tone gradient background confused a per-pixel
+ * "is this bright" scan of the raw page (it is not flat, so the same threshold
+ * that correctly picks out the glyphs over one patch of background mis-fires over
+ * another), where the same test applied after `inkFromBright` has already turned
+ * the whole box into clean black-on-white has nothing left to be ambiguous about.
+ *
+ * `f.fromEnd` walks the SAME continuation test from the LAST line backward
+ * instead of the first line forward — for a caption anchored to the bottom of a
+ * box that can also catch an unrelated single line ABOVE it (a smaller diagram
+ * dimension label, sitting closer to this box's top than the title-spacing gap
+ * that separates genuine continuation lines, varying card to card with how tall
+ * that card's own diagram happens to be). Growing backward from the line that is
+ * always real — the caption always ends flush with the card's own bottom edge —
+ * never has to guess how much of that variable gap to search past.
+ *
+ * @returns {{value: string, bounds: [number,number]|null}} bounds in ABSOLUTE page
+ *   pixels, so a later field (a photo pinned between two text fields) can use them
+ *   the same way regardless of which buffer they were actually measured in.
+ */
+async function readMultiline(page, b, mm, f, spec) {
+  const px = v => Math.round(v * mm)
+  const region = crop(page, b.x, b.y, b.w, b.h)
+  const inkedBox = f.lightText ? inkFromBright(region) : null
+  let lines = inkedBox
+    ? findTextLinesInImage(inkedBox, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
+    : findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
+  if (lines.length > 1) {
+    if (f.fromEnd) {
+      const last = lines.length - 1
+      const h0 = lines[last][1] - lines[last][0]
+      const kept = [lines[last]]
+      for (let i = last - 1; i >= 0; i--) {
+        const gap = kept[kept.length - 1][0] - lines[i][1]
+        const h = lines[i][1] - lines[i][0]
+        if (gap > px(f.lineGapMaxMm ?? 3) || h > h0 * 1.8 || h < h0 * 0.4) break
+        kept.unshift(lines[i])
+      }
+      lines = kept
+    } else {
+      const h0 = lines[0][1] - lines[0][0]
+      const kept = [lines[0]]
+      for (let i = 1; i < lines.length; i++) {
+        const gap = lines[i][0] - kept[kept.length - 1][1]
+        const h = lines[i][1] - lines[i][0]
+        if (gap > px(f.lineGapMaxMm ?? 3) || h > h0 * 1.8 || h < h0 * 0.4) break
+        kept.push(lines[i])
+      }
+      lines = kept
+    }
+  }
+  if (!lines.length) return { value: '', bounds: null }
+  const pad = px(1.2)
+  // `blockOcr`: OCR the whole kept SPAN in one pass, in block mode, instead of one
+  // `ocrLabel` (single-LINE mode) call per detected band. Two tightly-kerned lines
+  // can sit close enough together that no row between them ever drops under the
+  // ink floor — nothing to split the row-scan on — so what `findTextLines` hands
+  // back is ONE band that is genuinely two lines of print. Single-line OCR on that
+  // crop assumes it is looking at one line and mangles or drops the other; block
+  // mode expects multiple lines and reads both, which is what this is for.
+  let words
+  if (f.blockOcr) {
+    const t0 = lines[0][0], t1 = lines[lines.length - 1][1]
+    const target1 = inkedBox
+      ? crop(inkedBox, 0, Math.max(0, t0 - pad), inkedBox.width, t1 - t0 + pad * 2)
+      : crop(page, b.x, Math.max(0, t0 - pad), b.w, t1 - t0 + pad * 2)
+    const { text } = await ocr(target1, f.whitelist ? { whitelist: f.whitelist } : {})
+    words = text.split('\n').map(s => trimBleed(s.trim())).filter(Boolean)
+    if (f.repair === 'code') {
+      // Block OCR can still emit Q/O/I look-alikes even when the normal title
+      // whitelist excludes them. Re-read the same pixels with a code-safe
+      // alphabet, then use that result only when it contains a plausible code;
+      // this preserves ordinary words such as GOLD and PS FLAT BAR verbatim.
+      const strict = await ocr(target1, { whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' })
+      const strictWords = strict.text.split('\n').map(s => trimBleed(s.trim())).filter(Boolean)
+      const repaired = strictWords.map(word => repairCode(word, { requireDigit: !f.looseCode }).value)
+      if (repaired.some(word => /^[A-Z]{1,8}\d{1,6}[A-Z]?$/.test(word.replace(/\s+/g, '')))) {
+        words = repaired
+      }
+    }
+  } else {
+    words = []
+    for (const [t0, t1] of lines) {
+      const target1 = inkedBox
+        ? crop(inkedBox, 0, Math.max(0, t0 - pad), inkedBox.width, t1 - t0 + pad * 2)
+        : crop(page, b.x, Math.max(0, t0 - pad), b.w, t1 - t0 + pad * 2)
+      const word = f.repair === 'code'
+        ? await readCodeLabel(target1, f)
+        : trimBleed((await ocrLabel(target1, f.whitelist ? { whitelist: f.whitelist } : {})).text.trim())
+      if (word) words.push(word)
+    }
+  }
+  const value = words.join(' ')
+  const toAbs = inkedBox ? (y => y + b.y) : (y => y)
+  return { value, bounds: [toAbs(lines[0][0]), toAbs(lines[lines.length - 1][1])] }
+}
 
 /** Reads one page using a spec. */
 export async function readWithSpec(page, spec) {
@@ -309,11 +515,18 @@ export async function readWithSpec(page, spec) {
    * ask to be measured from the block's bottom (`from: 'blockBottom'`) and to
    * inherit the block's width (`w: 0`) — which is what a caption under a photo
    * actually wants, whatever size that photo happens to be.
+   *
+   * `w: 0` means "out to the block's own right edge", not "the block's full width
+   * glued on after whatever x already indented" — a title box that starts past the
+   * badge (`x: 11`) with `w: 0` must still END at the block's right edge, not 11mm
+   * beyond it. Measured the hard way: that overshoot read 11mm into the NEXT card's
+   * badge and title, and "PW03" came back "PW0304" — the start of PW04's own badge
+   * digits, glued onto the end of a perfectly good read.
    */
   const boxAt = (a, box, field) => {
     const fromBottom = field?.from === 'blockBottom' && a.block
     const originY = fromBottom ? a.y + a.h : a.y
-    const w = (box.w === 0 && a.block) ? a.w : px(box.w)
+    const w = (box.w === 0 && a.block) ? a.w - px(box.x) : px(box.w)
     const h = (box.h === 0 && a.block) ? a.h : px(box.h)
     return { x: a.x + px(box.x), y: originY + px(box.y), w, h }
   }
@@ -330,8 +543,13 @@ export async function readWithSpec(page, spec) {
     return true
   }) ?? kinds[kinds.length - 1]
 
-  for (const a of anchors) {
-    const kind = kindFor(a)
+  // Reads ONE anchor against ONE kind, returning the product it built — possibly
+  // carrying `__reject` if a required field did not pan out. Pulled out to a
+  // function (rather than inlined in the loop below) so a page that mixes several
+  // UNRELATED card shapes can try each kind in turn against the same anchor and
+  // keep whichever one actually worked, instead of a single spec only ever being
+  // able to describe one shape of product.
+  const readKind = async (a, kind) => {
     const product = { _spec: spec.id, _kind: kind.id }
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.
@@ -340,8 +558,12 @@ export async function readWithSpec(page, spec) {
         continue
       }
 
-      const b = boxAt(a, f.box, f)
-      const region = crop(page, b.x, b.y, b.w, b.h)
+      // A `parts` field (two differently-styled runs of text side by side, each
+      // with its OWN box) has no single box of its own — only its parts do, read
+      // further down. Computing `b`/`region` here against a nonexistent `f.box`
+      // would crash before that branch ever got a chance to run.
+      const b = f.parts ? null : boxAt(a, f.box, f)
+      const region = f.parts ? null : crop(page, b.x, b.y, b.w, b.h)
 
       if (f.type === 'text') {
         // A text box is a SEARCH REGION, not an exact crop.
@@ -358,8 +580,32 @@ export async function readWithSpec(page, spec) {
         // lets the SAME card template place its photo correctly whether the title
         // above it takes one line ("PW01") or two ("GOLD" / "PW02").
         let bounds = null
-        let value = null       // set directly by joinLines; otherwise read below
-        if (f.joinLines) {
+        let value = null       // set directly by joinLines/parts; otherwise read below
+        if (f.parts) {
+          // A title that is TWO DIFFERENT COLOURS of text side by side — a light
+          // badge code and, beside it, a dark descriptive word ("CSW" white,
+          // "- Coner Solid Wainscoting" brown) — cannot be read as one box at one
+          // threshold. Each part is read with its OWN polarity and box, then
+          // joined into one name, so "CSW" does not collide with a second product
+          // on the same page whose badge also prints "CSW".
+          const vals = []
+          let firstTop = null, lastBottom = null
+          for (const part of f.parts) {
+            const pb = boxAt(a, part.box, part)
+            const r = await readMultiline(page, pb, mm, part, spec)
+            if (r.value) vals.push(r.value)
+            if (r.bounds) {
+              firstTop = firstTop == null ? r.bounds[0] : Math.min(firstTop, r.bounds[0])
+              lastBottom = lastBottom == null ? r.bounds[1] : Math.max(lastBottom, r.bounds[1])
+            }
+          }
+          value = vals.join(f.partSep ?? ' ')
+          if (firstTop != null) bounds = [firstTop, lastBottom]
+          if (!value) {
+            warnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
+            if (f.required) product.__reject = true
+          }
+        } else if (f.joinLines) {
           // The title is however many lines it actually is, not a fixed count —
           // "GOLD" stacked over "PW02" is one name, "GOLD PW02", not a box tall
           // enough for one line that clips the second to a sliver ("oo"). But the
@@ -367,59 +613,35 @@ export async function readWithSpec(page, spec) {
           // card that same extra height reaches down into the photo beneath it —
           // a product edge or shadow is dark enough to register as a spurious
           // "line" of its own, by this same measure of "a band of dark pixels".
-          //
-          // A real continuation line sits close under the first, at TITLE line
-          // spacing; the gap before genuine photo content starts is bigger, by
-          // design (the two are not meant to touch). So only lines that follow
-          // closely — and are a similar height, not a thick band of photo ink —
-          // are accepted as more of the title. The first line is always kept.
-          //
-          // Light text is binarised ONCE, over the whole box, and every line is
-          // then found and read from THAT buffer — a mid-tone gradient background
-          // confused a per-pixel "is this bright" scan of the raw page (it is not
-          // flat, so the same threshold that correctly picks out the glyphs over
-          // one patch of background mis-fires over another), where the same test
-          // applied after `inkFromBright` has already turned the whole box into
-          // clean black-on-white has nothing left to be ambiguous about.
-          const inkedBox = f.lightText ? inkFromBright(region) : null
-          let lines = inkedBox
-            ? findTextLinesInImage(inkedBox, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
-            : findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7)
-          if (lines.length > 1) {
-            const h0 = lines[0][1] - lines[0][0]
-            const kept = [lines[0]]
-            for (let i = 1; i < lines.length; i++) {
-              const gap = lines[i][0] - kept[kept.length - 1][1]
-              const h = lines[i][1] - lines[i][0]
-              if (gap > px(f.lineGapMaxMm ?? 3) || h > h0 * 1.8 || h < h0 * 0.4) break
-              kept.push(lines[i])
-            }
-            lines = kept
-          }
-          if (!lines.length) {
+          const r = await readMultiline(page, b, mm, f, spec)
+          if (!r.bounds) {
             warnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
             product[f.key] = ''
             if (f.required) product.__reject = true
             continue
           }
-          const pad = px(1.2)
-          const words = []
-          for (const [t0, t1] of lines) {
-            const target1 = inkedBox
-              ? crop(inkedBox, 0, Math.max(0, t0 - pad), inkedBox.width, t1 - t0 + pad * 2)
-              : crop(page, b.x, Math.max(0, t0 - pad), b.w, t1 - t0 + pad * 2)
-            const { text } = await ocrLabel(target1, f.whitelist ? { whitelist: f.whitelist } : {})
-            const word = trimBleed(text.trim())
-            if (word) words.push(word)
-          }
-          value = words.join(' ')
-          // Bounds go out in ABSOLUTE page coordinates regardless of which buffer
-          // they were measured in, so a later field can use them the same way.
-          const toAbs = inkedBox ? (y => y + b.y) : (y => y)
-          bounds = [toAbs(lines[0][0]), toAbs(lines[lines.length - 1][1])]
+          value = r.value
+          bounds = r.bounds
         } else {
           if (f.line) {
-            const lines = findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7, f.lightText)
+            let lines = findTextLines(page, b, mm, f.lineGapMm ?? spec.lineGapMm ?? 0.7, f.lightText)
+            // A search box tall enough for a two-line caption can also just catch
+            // the bottom edge of the photo above it — a shadow or a glare, not
+            // text, but still dense enough to pass as a geometric "line", and it
+            // throws off plain positional indexing (line 1 became an empty band,
+            // the REAL first line became "line 2"). `pickMatching` reads every
+            // candidate band and keeps only the ones that actually look like what
+            // this field expects, so the index counts real content, not position.
+            if (f.pickMatching && f.matches && lines.length > 1) {
+              const pad0 = px(1.2)
+              const good = []
+              for (const ln of lines) {
+                const t = crop(page, b.x, Math.max(0, ln[0] - pad0), b.w, ln[1] - ln[0] + pad0 * 2)
+                const { text: t2 } = await ocrLabel(t, f.whitelist ? { whitelist: f.whitelist } : {})
+                if (f.matches.test(t2)) good.push(ln)
+              }
+              if (good.length) lines = good
+            }
             const chosen = lines[f.line - 1]
             if (chosen) {
               const pad = px(1.2)
@@ -438,12 +660,30 @@ export async function readWithSpec(page, spec) {
           // bright pixels into solid ink instead, the same move keepInk makes for
           // dark ink on line art, mirrored.
           if (f.lightText) target = inkFromBright(target)
-          const { text } = await ocrLabel(target, f.whitelist ? { whitelist: f.whitelist } : {})
+          const text = f.repair === 'code'
+            ? await readCodeLabel(target, f)
+            : (await ocrLabel(target, f.whitelist ? { whitelist: f.whitelist } : {})).text
           value = trimBleed(text.replace(new RegExp(`^\\s*${f.stripPrefix ?? ''}\\s*[:;.]?\\s*`, 'i'), ''))
         }
         if (f.repair === 'size') value = repairSize(value).value
-        if (f.repair === 'code') value = repairCode(value).value
+        if (f.repair === 'code') {
+          // A `joinLines` title can be MORE than a bare code — "GOLD" stacked over
+          // "PW02" reads back as "GOLD PW02", two words. repairCode compacts
+          // whitespace to recognise the code shape, which would weld a two-word
+          // title into one run ("GOLDPW02"); repairing only the LAST word keeps
+          // the brand word untouched and still fixes the code sitting after it.
+          const opts = { requireDigit: !f.looseCode }
+          if (f.joinLines && value.includes(' ')) {
+            const words2 = value.split(' ')
+            words2[words2.length - 1] = snapCode(repairCode(words2[words2.length - 1], opts).value, f.codeCandidates)
+            value = words2.join(' ')
+          } else {
+            value = snapCode(repairCode(value, opts).value, f.codeCandidates)
+          }
+        }
         if (f.repair === 'length') value = repairLength(value).value
+        if (f.repair === 'lengthParen') value = repairLengthParen(value).value
+        if (f.repair === 'firstMm') value = repairFirstMm(value).value
         // Names must stay verbatim, so vocabulary snapping is opt-in per field.
         if (f.vocab) value = snapTo(value, FINISHES).value || value
         product[f.key] = value
@@ -542,10 +782,29 @@ export async function readWithSpec(page, spec) {
         }
       }
     }
-    const rejected = product.__reject
-    delete product.__reject
-    delete product.__bounds
-    if (!rejected) products.push(product)
+    return product
+  }
+
+  // A layout whose kinds all declare `when` keeps today's behaviour exactly: ONE
+  // kind per anchor, chosen by how many anchors share its band (LED's grid row vs.
+  // its featured block). A layout whose kinds declare no `when` at all is a page
+  // mixing shapes that cannot be told apart by position — try each kind in turn
+  // and keep the first one whose required fields actually held up. An anchor that
+  // satisfies none of them is not a product in any shape this spec knows, and is
+  // dropped rather than imported as whichever kind rejected "least".
+  const tryAllKinds = !kinds.some(k => k.when)
+
+  for (const a of anchors) {
+    const candidateKinds = tryAllKinds ? kinds : [kindFor(a)]
+    let winner = null
+    for (const kind of candidateKinds) {
+      const attempt = await readKind(a, kind)
+      if (!attempt.__reject) { winner = attempt; break }
+    }
+    if (!winner) continue
+    delete winner.__reject
+    delete winner.__bounds
+    products.push(winner)
   }
 
   // Never auto-correct a measurement: report the disagreement instead.

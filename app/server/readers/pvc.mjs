@@ -12,8 +12,8 @@ import { snapTo, repairSize, trimBleed, FINISHES } from './vocab.mjs'
 const dataUrl = img => `data:image/png;base64,${toBuffer(img).toString('base64')}`
 
 const cleanPhoto = img => {
-  const { img: white } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
+  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
 }
 // PVC drawings are GOLD line art (luminance ~160), so the cut sits higher than
 // the 185 used for the LED template's black drawings.

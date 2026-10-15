@@ -267,6 +267,8 @@ app.listen(PORT, () => {
   // every edit but this process does not, so a stale server is easy to miss — if a
   // reader you expect is absent from this line, the code here is out of date.
   console.log(`readers        ${BUILTIN_SPECS.map(s => s.title).join(', ')}`)
-  console.log(`AI fallback    ${hasCredentials() ? 'ready' : 'no ANTHROPIC_API_KEY — unknown layouts will fail'}`)
+  const aiProvider = process.env.OPENAI_API_KEY ? 'OpenAI' :
+    (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? 'Anthropic' : null)
+  console.log(`AI fallback    ${aiProvider ? `ready (${aiProvider})` : 'no API key — unknown layouts will fail'}`)
   console.log(`photo split    ${hasGeminiCredentials() ? 'ready (Gemini key found)' : 'no GEMINI_API_KEY — photos read as one product'}`)
 })

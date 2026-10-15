@@ -91,8 +91,8 @@ function labelColumns(page, x0, x1, y0, y1, mm) {
 }
 
 function cleanPhoto(img) {
-  const { img: white } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
+  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
 }
 
 const cleanDrawing = img => trimToContent(keepInk(img, 185), { gap: 60, pad: 6 })

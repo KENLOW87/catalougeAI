@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { TYPE_B, blankFinish } from '../lib/model.js'
 import { getCategory } from '../lib/categories/index.js'
-import { removeBackground, modelReady } from '../lib/bgremove.js'
+import { processBackground, modelReady } from '../lib/bgremove.js'
 
 // One dialog for every category. The field list comes from the category
 // (`fields(product)`), so adding a category does not mean adding a dialog.
@@ -51,7 +51,9 @@ export default function ProductDialog({ categoryId, category: given, initial, on
     setBgBusy(prev => new Set(prev).add(key))
     setBgError(prev => ({ ...prev, [key]: null }))
     try {
-      apply(await removeBackground(dataUrl))
+      const result = await processBackground(dataUrl)
+      apply(result.dataUrl)
+      if (result.skipped) setBgError(prev => ({ ...prev, [key]: 'Background is already light, so the original photo was kept.' }))
     } catch (e) {
       setBgError(prev => ({ ...prev, [key]: `Could not remove the background: ${e.message}` }))
     } finally {

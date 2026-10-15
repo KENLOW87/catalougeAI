@@ -78,7 +78,21 @@ export function whitenBackground(img, { tol = 30, agreement = 0.6, forced = null
   const bg = forced ?? [median(0), median(1), median(2)]
   const dist = (r, g, b) => Math.hypot(r - bg[0], g - bg[1], b - bg[2])
   const agree = border.filter(p => dist(...p) < tol).length / border.length
-  if (!forced && agree <= agreement) return { img, changed: false, bg, agree }
+  const lum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]
+  const brightBorder = border.filter(([r, g, b]) =>
+    0.299 * r + 0.587 * g + 0.114 * b >= 205).length / border.length
+  // A light border is already a safe catalogue background. Callers should keep
+  // the original crop in this case: whitening it and then selecting a single
+  // connected blob can erase white product facets (SW01 is the known example).
+  // Do not require a flat colour here. Catalogue photos often use a light
+  // marble/wood background with gentle texture; colour agreement is low even
+  // though the background is bright enough that segmentation would damage a
+  // white product. The border brightness is the safer signal for this decision.
+  // Prefer preserving a bright catalogue photo over an aggressive cutout. A
+  // white product on a pale grey/wood background is still readable in the
+  // original crop, while segmentation can erase its edges and highlights.
+  const light = lum >= 205 && brightBorder >= 0.60
+  if (!forced && agree <= agreement) return { img, changed: false, bg, agree, light }
 
   const out = blank(width, height)
   for (let i = 0; i < data.length; i += 4) {
@@ -87,7 +101,7 @@ export function whitenBackground(img, { tol = 30, agreement = 0.6, forced = null
     out.data[i + 1] = isBg ? 255 : data[i + 1]
     out.data[i + 2] = isBg ? 255 : data[i + 2]
   }
-  return { img: out, changed: true, bg, agree }
+  return { img: out, changed: true, bg, agree, light }
 }
 
 /**
@@ -165,27 +179,86 @@ export function trimToContent(img, { gap = 45, pad = 5, white = 247 } = {}) {
 }
 
 /**
+ * Binary dilation by a (2r+1)x(2r+1) square, as two O(n) sliding-window passes
+ * (horizontal then vertical) so the cost does not grow with the radius -- a brute
+ * force per-pixel disc stamp is O(n * r^2), which is unusable at r>10 on a
+ * 1500x1000 crop.
+ */
+function dilateMask(mask, width, height, r) {
+  if (r <= 0) return mask
+  const tmp = new Uint8Array(width * height)
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    let count = 0
+    for (let x = 0; x <= r && x < width; x++) count += mask[row + x]
+    for (let x = 0; x < width; x++) {
+      tmp[row + x] = count > 0 ? 1 : 0
+      const out = x - r, add = x + r + 1
+      if (out >= 0) count -= mask[row + out]
+      if (add < width) count += mask[row + add]
+    }
+  }
+  const out = new Uint8Array(width * height)
+  for (let x = 0; x < width; x++) {
+    let count = 0
+    for (let y = 0; y <= r && y < height; y++) count += tmp[y * width + x]
+    for (let y = 0; y < height; y++) {
+      out[y * width + x] = count > 0 ? 1 : 0
+      const outIdx = y - r, addIdx = y + r + 1
+      if (outIdx >= 0) count -= tmp[outIdx * width + x]
+      if (addIdx < height) count += tmp[addIdx * width + x]
+    }
+  }
+  return out
+}
+
+/**
  * Keeps the largest connected blob of ink and whitens the rest.
  * Product strips run diagonally, so a sliver of a neighbour can share COLUMNS with
  * the real subject -- run-based trimming cannot separate those, but components can.
+ *
+ * Connectivity is judged on a CLOSED copy of the ink mask (dilate by `closeRadius`,
+ * label, then read those labels back onto the real ink pixels) rather than on the
+ * raw mask directly. A product that is itself near-white has broad facets that
+ * `whitenBackground` flattens right along with the real backdrop (see the trap
+ * documented on `whitenBackground`), which can cut the product into several
+ * disconnected pieces -- a highlight running clean across it, say. Plain strict
+ * 8-connectivity then keeps only one surviving piece and discards the rest, which
+ * is how a whole product came back eaten to a sliver. Closing first treats pieces
+ * that are only a few pixels apart as one object, the way the gap already does for
+ * `trimToContent`.
+ *
+ * `closeRadius` has to stay well under the narrowest real gutter between two
+ * different grid cells -- measured at ~31-37px at 400 DPI on a 4-column panel-card
+ * page -- or it starts bridging to a genuinely different neighbour (confirmed: at
+ * closeRadius=6 a faint bleed band from the row above got pulled into a product
+ * that was already cutting correctly). 5px comfortably closes the gaps a
+ * whitened-out highlight leaves inside ONE product (measured up to ~29px as actual
+ * holes, but each is bridged from both sides so only ~half that reach is needed)
+ * while staying far short of the real gutter.
+ *
+ * Components are ranked by how many REAL ink pixels they hold, not by the dilated
+ * pixel count -- a label must win by how much actual product it holds, not by how
+ * far its dilation halo happened to spread into blank background.
  */
-export function keepLargestBlob(img, { white = 244 } = {}) {
+export function keepLargestBlob(img, { white = 244, closeRadius = 5 } = {}) {
   const { width, height, data } = img
   const n = width * height
   const ink = inkMask(img, white)
+  const closed = closeRadius > 0 ? dilateMask(ink, width, height, closeRadius) : ink
   const label = new Int32Array(n).fill(-1)
   const stack = new Int32Array(n)
   const sizes = []
 
   for (let start = 0; start < n; start++) {
-    if (!ink[start] || label[start] >= 0) continue
+    if (!closed[start] || label[start] >= 0) continue
     const id = sizes.length
     let sp = 0, count = 0
     stack[sp++] = start
     label[start] = id
     while (sp > 0) {
       const cur = stack[--sp]
-      count++
+      if (ink[cur]) count++
       const cx = cur % width, cy = (cur / width) | 0
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -193,7 +266,7 @@ export function keepLargestBlob(img, { white = 244 } = {}) {
           const nx = cx + dx, ny = cy + dy
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
           const ni = ny * width + nx
-          if (ink[ni] && label[ni] < 0) { label[ni] = id; stack[sp++] = ni }
+          if (closed[ni] && label[ni] < 0) { label[ni] = id; stack[sp++] = ni }
         }
       }
     }
@@ -204,7 +277,7 @@ export function keepLargestBlob(img, { white = 244 } = {}) {
   const best = sizes.indexOf(Math.max(...sizes))
   const out = blank(width, height)
   for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const keep = label[i] === best
+    const keep = ink[i] && label[i] === best
     out.data[p] = keep ? data[p] : 255
     out.data[p + 1] = keep ? data[p + 1] : 255
     out.data[p + 2] = keep ? data[p + 2] : 255

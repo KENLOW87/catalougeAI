@@ -76,7 +76,7 @@ export function repairSize(text) {
  * part can be resolved. This is resolving a misread, not tidying a name: the
  * printed truth really is a zero.
  */
-export function repairCode(text) {
+export function repairCode(text, { requireDigit = true } = {}) {
   // Whitespace is collapsed, NOT removed. Removing it unconditionally meant a first
   // line carrying a description instead of a code came back as one run-on word
   // ("Fishbelly White Marble" -> "FishbellyWhiteMarble"). Spaces are only dropped
@@ -96,9 +96,17 @@ export function repairCode(text) {
   // names are never second-guessed.
   if (!m) return { value: t, repaired: false }
   const [, prefix, middle0, suffix] = m
-  // Only touch the middle if it is meant to be numeric — it must already contain
-  // at least one unambiguous digit.
-  if (!/\d/.test(middle0)) return { value: t, repaired: false }
+  // Only touch the middle if it is meant to be numeric — by default it must already
+  // contain at least one unambiguous digit, which is what stops a letters-only code
+  // like "SQ" being invented into "S0".
+  //
+  // `requireDigit: false` is for a layout whose badges are KNOWN to be numbered
+  // ("PW01".."PW07") — there OCR sometimes misreads BOTH digits of a short suffix
+  // into their look-alike letters at once ("PW01" -> "PWOI", not one real digit left
+  // to anchor on). The outer shape regex above already does the real safety work:
+  // a genuine letters-only name ("CSW", "PS FLAT BAR") has letters outside the
+  // ambiguous set and simply never matches it, digit or no digit.
+  if (requireDigit && !/\d/.test(middle0)) return { value: t, repaired: false }
 
   // ONE GLYPH, READ TWICE. At print resolution OCR sometimes emits both readings of
   // the same round character — "PV03" comes back as "PV0O3", "PV06" as "PVO06".
@@ -118,6 +126,24 @@ export function repairCode(text) {
   return { value: `${prefix.toUpperCase()}${fixed}${suffix.toUpperCase()}`, repaired: true }
 }
 
+/**
+ * Snaps a code to a small, layout-specific candidate set after OCR repair.
+ * This is deliberately opt-in: product codes are not globally predictable, but
+ * a known page family such as Wainscoting's PW01..PW07 is. It handles OCR's Q/O
+ * confusion and repeated zero glyphs without changing unrelated catalogues.
+ */
+export function snapCode(text, candidates = []) {
+  const raw = (text ?? '').replace(/\s+/g, '').toUpperCase()
+  if (!raw || !candidates.length) return raw
+  const normal = value => value.toUpperCase()
+    .replace(/[OQ]/g, '0')
+    .replace(/[IL|]/g, '1')
+    .replace(/S/g, '5')
+    .replace(/0+/g, '0')
+  const key = normal(raw)
+  return candidates.find(candidate => normal(candidate) === key) ?? text
+}
+
 /** Repairs `Length : 3000mm`. */
 export function repairLength(text) {
   const m = (text ?? '').match(/(\d[\d\s,]*)\s*mm/i)
@@ -126,18 +152,61 @@ export function repairLength(text) {
 }
 
 /**
- * Strips trailing noise bled in from a neighbouring column.
+ * Repairs a "2440mm (L)" length line — the second caption line under a panel
+ * card's dimensions (`photo-grid-panel`'s "third" field).
+ *
+ * The parenthesised letter is always "L" on every real caption (it is the one
+ * length figure, printed after the width/height line), but at this font size OCR
+ * sometimes reads it as a look-alike digit ("2440mm (1)") or leaves a trailing
+ * scrap from whatever sits just below the card bleeding into the crop ("2440mm
+ * (L) Hid"). Re-printing the parenthetical as the literal "(L)" it always is —
+ * rather than trying to repair whatever glyph OCR actually produced — fixes both
+ * at once and discards the trailing noise along with it.
+ */
+export function repairLengthParen(text) {
+  const t = (text ?? '').replace(/\s+/g, ' ').trim()
+  const m = t.match(/(\d[\d,]*)\s*mm\s*\([^)]*\)/i)
+  if (!m) return { value: t, repaired: false }
+  return { value: `${m[1].replace(/,/g, '')}mm (L)`, repaired: true }
+}
+
+/**
+ * Keeps just the "NNNmm" figure out of a box that also caught the measurement
+ * line's own tick marks either side of it ("— 115mm — _") — the ticks are drawn
+ * as thin runs of ink, not glyphs, so OCR renders them as stray dashes and
+ * underscores rather than dropping them, and `matches: /\d+\s*mm/i` only proves
+ * the real number is in there SOMEWHERE, not that it is all that came back.
+ */
+export function repairFirstMm(text) {
+  const m = (text ?? '').match(/\d[\d,]*\s*mm/i)
+  if (!m) return { value: (text ?? '').trim(), repaired: false }
+  return { value: m[0].replace(/[\s,]/g, ''), repaired: true }
+}
+
+/**
+ * Strips noise bled in from a neighbouring element.
  *
  * A crop that reaches slightly too far right picks up the first letters of the next
  * cell — "Silver Co", "Black oo", "Led -170 L". Real trailing words in this
  * catalogue are never one or two letters, so a short trailing token is bleed.
+ *
+ * The same thing happens at the START of a dimension caption: a search box wide
+ * enough to find "40mm (W) x 15mm (H)" also catches the tip of the product photo
+ * sitting just above it, and a faint mark on it reads as one junk token before the
+ * real text — "J 40mm (W)...". A caption here always begins with a digit, so a
+ * single short non-numeric token immediately before one is bleed the same way.
  */
 export function trimBleed(text) {
   let t = (text ?? '').trim()
+  const lead = t.match(/^([^\d]{1,3})\s+(\d.*)$/)
+  if (lead && lead[1].replace(/[^A-Za-z]/g, '').length <= 1) t = lead[2]
   for (let i = 0; i < 2; i++) {
     const next = t.replace(/\s+[A-Za-z]{1,2}$/, '').trim()
     if (next === t) break
     t = next
   }
+  // A stray punctuation mark left by the same kind of bleed, after whatever real
+  // word or digit ends the line ("2440mm (L) =") — never part of a real caption.
+  t = t.replace(/\s+[^\w\s]{1,2}$/, '').trim()
   return t
 }

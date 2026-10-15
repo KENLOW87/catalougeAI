@@ -30,6 +30,54 @@ const load = () => {
 /** True once the model has loaded — lets the UI say "loading…" only the first time. */
 export const modelReady = () => ready
 
+const readImage = dataUrl => new Promise((resolve, reject) => {
+  const image = new Image()
+  image.onload = () => resolve(image)
+  image.onerror = () => reject(new Error('The image could not be read'))
+  image.src = dataUrl
+})
+
+/**
+ * White/light product photos are already catalogue-ready. Running segmentation
+ * on them can confuse a bright product surface with the background and remove
+ * part of the product (SW01 is the known example). Sample only the border so a
+ * dark or colourful product in the middle does not make the photo fail this test.
+ */
+const hasLightBackground = async dataUrl => {
+  const image = await readImage(dataUrl)
+  const size = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(image, 0, 0, size, size)
+  const pixels = ctx.getImageData(0, 0, size, size).data
+  const luminance = []
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (x > 3 && x < size - 4 && y > 3 && y < size - 4) continue
+      const i = (y * size + x) * 4
+      luminance.push(0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2])
+    }
+  }
+  luminance.sort((a, b) => a - b)
+  const median = luminance[luminance.length >> 1]
+  const bright = luminance.filter(v => v >= 205).length / luminance.length
+  // Pale grey/wood backgrounds are still safer to keep than to segment: the
+  // model can mistake a white product's face for the background.
+  return median >= 215 && bright >= 0.60
+}
+
+/**
+ * Returns the processed image plus whether the original was intentionally kept.
+ * Keeping this separate from removeBackground preserves the old data-URL API for
+ * any callers outside the current UI.
+ */
+export async function processBackground(dataUrl) {
+  if (await hasLightBackground(dataUrl)) return { dataUrl, skipped: true }
+  return { dataUrl: await removeBackground(dataUrl), skipped: false }
+}
+
 /**
  * @param dataUrl  a product photo as a data URL (same shape every photo field
  *                 already stores, per ProductDialog's FileReader.readAsDataURL)

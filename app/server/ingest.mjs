@@ -13,7 +13,6 @@ import Anthropic from '@anthropic-ai/sdk'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, writeFile, readFile, rm, readdir } from 'node:fs/promises'
-import { writeFileSync as __writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -114,6 +113,11 @@ There are two product types:
   A featured product has a "finishes" array and usually no single photo_box.
 
 Rules that matter:
+- For unfamiliar layouts, still return every visible product card. Use "name" for
+  the printed product name, "code" for the printed code when separate, "size" for
+  dimensions, and "category" for the product family/section. Do not discard a
+  product because it has no technical drawing; showroom/display pages may have
+  product photos and captions only.
 - Transcribe names EXACTLY as printed, including odd spacing around dashes.
   "Led -160" and "Led - 508" are different strings and both must be preserved
   character for character. Never tidy them up.
@@ -175,7 +179,6 @@ async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, should
   return sortByPage(files, dir)
 }
 
-let __dbgN = 0
 /** Cuts one asset out of the full-resolution page and cleans it up. */
 function cutAsset(page, box, kind) {
   const snapped = snapBox(page, box)
@@ -189,28 +192,47 @@ function cutAsset(page, box, kind) {
     img = keepInk(img)
     img = trimToContent(img, { gap: 60, pad: 6 })
   } else {
-    if (process.env.DEBUG_CUTASSET) {
-      const n = __dbgN++
-      __writeFileSync(`${process.env.DEBUG_CUTASSET}/${n}-0-raw.png`, toBuffer(img))
-      const { img: whitened, changed, bg, agree } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-      __writeFileSync(`${process.env.DEBUG_CUTASSET}/${n}-1-whitened.png`, toBuffer(whitened))
-      console.log(`[dbg ${n}] changed=${changed} agree=${agree?.toFixed?.(2)} bg=${bg}`)
-      const blobbed = keepLargestBlob(whitened)
-      __writeFileSync(`${process.env.DEBUG_CUTASSET}/${n}-2-blob.png`, toBuffer(blobbed))
-      img = trimToContent(blobbed, { gap: 45, pad: 4 })
-      __writeFileSync(`${process.env.DEBUG_CUTASSET}/${n}-3-trim.png`, toBuffer(img))
-    } else {
-      // Photo: flatten a flat background, then discard slivers of the neighbour.
-      const { img: whitened } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-      img = keepLargestBlob(whitened)
-      img = trimToContent(img, { gap: 45, pad: 4 })
-    }
+    // Photo: flatten a flat background, then discard slivers of the neighbour.
+    const { img: whitened, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+    // Preserve already-light product photography. The crop is layout-bounded;
+    // running blob removal here can mistake white product facets for background.
+    img = light ? img : trimToContent(keepLargestBlob(whitened), { gap: 45, pad: 4 })
   }
   return `data:image/png;base64,${toBuffer(img).toString('base64')}`
 }
 
 export function hasCredentials() {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+  return Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+}
+
+const hasOpenAICredentials = () => Boolean(process.env.OPENAI_API_KEY)
+
+async function readWithOpenAI(imageData, pageNo) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${imageData}` } },
+          { type: 'text', text: `Read page ${pageNo} and return every product on it as JSON with a products array.` },
+        ] },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`OpenAI API ${response.status}: ${detail.slice(0, 300)}`)
+  }
+  const body = await response.json()
+  return JSON.parse(body.choices?.[0]?.message?.content ?? '{}')
 }
 
 /**
@@ -375,8 +397,9 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
   const getClient = () => {
     if (!hasCredentials()) {
       throw new Error('This layout is not one the built-in readers recognise, and ' +
-        'there is no ANTHROPIC_API_KEY set for the AI reader to fall back on.')
+        'there is no API key set for the AI reader to fall back on.')
     }
+    if (hasOpenAICredentials()) return null
     return (client ??= new Anthropic())
   }
 
@@ -494,44 +517,73 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         continue
       }
       const imageData = (await readFile(visionPages[i])).toString('base64')
-      const response = await getClient().messages.create({
-        model: 'claude-opus-5',
-        max_tokens: 16000,
-        system: SYSTEM,
-        thinking: { type: 'adaptive' },
-        output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageData } },
-            { type: 'text', text: `Read page ${i + 1} and return every product on it.` },
-          ],
-        }],
-      })
+      let parsed
+      if (hasOpenAICredentials()) {
+        onProgress(`Reading page ${i + 1} with OpenAI…`)
+        try {
+          parsed = await readWithOpenAI(imageData, i + 1)
+        } catch (e) {
+          warnings.push(`Page ${i + 1}: OpenAI could not read it (${e.message}).`)
+          continue
+        }
+      } else {
+        const response = await getClient().messages.create({
+          model: 'claude-opus-5',
+          max_tokens: 16000,
+          system: SYSTEM,
+          thinking: { type: 'adaptive' },
+          output_config: { format: { type: 'json_schema', schema: SCHEMA } },
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageData } },
+              { type: 'text', text: `Read page ${i + 1} and return every product on it.` },
+            ],
+          }],
+        })
 
-      if (response.stop_reason === 'refusal') {
-        warnings.push(`Page ${i + 1} was declined by the safety classifier; skipped.`)
-        continue
+        if (response.stop_reason === 'refusal') {
+          warnings.push(`Page ${i + 1} was declined by the safety classifier; skipped.`)
+          continue
+        }
+
+        try {
+          parsed = JSON.parse(response.content.find(b => b.type === 'text')?.text ?? '{}')
+        } catch {
+          warnings.push(`Page ${i + 1}: could not parse the model's response; skipped.`)
+          continue
+        }
       }
 
-      const text = response.content.find(b => b.type === 'text')?.text ?? '{}'
-      let parsed
-      try {
-        parsed = JSON.parse(text)
-      } catch {
-        warnings.push(`Page ${i + 1}: could not parse the model's response; skipped.`)
+      const aiProducts = Array.isArray(parsed?.products) ? parsed.products : []
+      if (!aiProducts.length) {
+        // An AI model can correctly recognise a showroom or installation spread
+        // as not being a normal product grid. Keep it and extract its photos
+        // instead of silently dropping the page.
+        const details = extractDetailPhotos(assetPage)
+        products.push(keepWholePage(readImage(visionPages[i]), i + 1, intoCategory, details))
+        onProgress(`Page ${i + 1} is a display/showroom page — kept whole` +
+          `${details.length ? `, ${details.length} close-up${details.length === 1 ? '' : 's'} extracted` : ''}.`)
         continue
       }
 
       onProgress(`Cutting images from page ${i + 1}…`)
 
-      for (const p of parsed.products ?? []) {
+      for (const p of aiProducts) {
+        const code = String(p.code ?? '').trim()
+        const printedName = String(p.name ?? '').trim()
+        const name = code && printedName && !printedName.toUpperCase().includes(code.toUpperCase())
+          ? `${code} ${printedName}` : (printedName || code)
         const draft = {
           id: `ing${products.length + 1}_${Date.now().toString(36)}`,
           type: p.type === 'B' ? 'B' : 'A',
-          name: p.name ?? '',
+          name,
           colour: p.colour ?? '',
-          length: p.length ?? '',
+          length: p.length ?? p.size ?? '',
+          subtitle: p.size ?? p.description ?? p.category ?? '',
+          third: p.category ?? '',
+          categoryId: 'generic-ai',
+          readBy: 'ai',
           photo: null,
           drawing: null,
           sourcePage: i + 1,
@@ -715,8 +767,8 @@ function cropDetectedProduct(page, box) {
  * photo exactly as snapped.
  */
 function cleanPhotoCrop(img) {
-  const { img: whitened, changed } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return changed ? trimToContent(keepLargestBlob(whitened), { gap: 45, pad: 4 }) : img
+  const { img: whitened, changed, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
+  return light ? img : changed ? trimToContent(keepLargestBlob(whitened), { gap: 45, pad: 4 }) : img
 }
 
 /** Builds one review draft in the shape its destination category expects. */

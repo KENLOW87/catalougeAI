@@ -38,6 +38,16 @@ const readImageFile = file => new Promise((res, rej) => {
   r.readAsDataURL(file)
 })
 
+// A re-import must be able to replace a previously extracted photo/drawing.
+// Reconciliation still matches by product name, but keeping `useDraft` empty
+// would silently keep the old (possibly damaged) media forever.  Text edits are
+// still shown for review; this helper only opts products with fresh media into
+// the PDF version by default.
+const hasMedia = p => Boolean(
+  p?.photo || p?.drawing ||
+  (p?.finishes ?? p?.variants ?? []).some(f => f?.photo || f?.drawing),
+)
+
 export default function IngestDialog({ existingByCategory, intoCategory, catalogues = [], targetChosen = false, onCommit, onCancel }) {
   const [phase, setPhase] = useState('pick')      // pick | working | review | error
   const [progress, setProgress] = useState('')
@@ -78,7 +88,12 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const groupBy = (found, destId) => {
     const byCat = {}
     for (const d of found) {
-      const own = d.categoryId ?? (Array.isArray(d.variants) ? 'pvc-marble' : 'accessories-led')
+      // Unknown-layout AI drafts must wait for routing. Treating every draft
+      // without a built-in shape as LED used to put mirror/showroom products in
+      // the wrong catalogue before the destination suggestion was applied.
+      const own = d.categoryId ?? (d.readBy === 'rules'
+        ? (Array.isArray(d.variants) ? 'pvc-marble' : 'accessories-led')
+        : null)
       const cat = BUILTIN_CATS.includes(own) ? own : (destId || own)
       ;(byCat[cat] ??= []).push({ ...d, categoryId: cat })
     }
@@ -109,7 +124,15 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     setDestination(dest)
     setNewTitle(titleFromFile(result.routing?.filename) || '')
 
-    setPlan(groupBy(found, dest))
+    const nextPlan = groupBy(found, dest)
+    setPlan(nextPlan)
+
+    // Re-imports are otherwise misleading: the reader produces a corrected
+    // image, but applyReconcile keeps the old record unless this checkbox is
+    // selected.  Default only the matched records that actually carry media;
+    // the administrator can still untick any individual record in the review.
+    setUseDraft(new Set(Object.values(nextPlan).flatMap(p =>
+      p.matched.filter(m => hasMedia(m.draft)).map(m => m.draft.id))))
     setPhase('review')
   }
 

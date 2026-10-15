@@ -3,7 +3,7 @@ import { runQc, qcSummary } from '../lib/qc.js'
 import { answerLocally, summarise } from '../lib/ask.js'
 import { parseCommand, COMMAND_HELP } from '../lib/commands.js'
 import { apiUrl } from '../lib/api.js'
-import { removeBackground, modelReady } from '../lib/bgremove.js'
+import { processBackground, modelReady } from '../lib/bgremove.js'
 
 const readFile = file => new Promise((res, rej) => {
   const r = new FileReader()
@@ -136,9 +136,12 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     say({ who: 'bot', source: 'local',
       text: modelReady() ? 'Removing the background…' : 'Loading the background-removal model — this happens once…' })
     try {
-      const clean = await removeBackground(raw)
+      const result = await processBackground(raw)
+      const clean = result.dataUrl
       setAttachment(a => (a && a.raw === raw ? { ...a, clean, useClean: true } : a))
-      say({ who: 'bot', source: 'local', text: 'Background removed. Tell me which product this replaces — ' +
+      say({ who: 'bot', source: 'local', text: result.skipped
+        ? 'The background is already light, so I kept the original photo. Tell me which product this replaces — '
+        : 'Background removed. Tell me which product this replaces — ' +
         'for example "replace PV07 with this photo".' })
     } catch (err) {
       say({ who: 'bot', text: `Could not remove the background: ${err.message}. ` +
