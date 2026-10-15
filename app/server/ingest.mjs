@@ -451,7 +451,14 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         warnings.push(`Page ${i + 1}: the local reader failed (${e.message}); using the AI reader.`)
       }
 
-      if (ruled?.spec) {
+      // If the geometry detector found substantially more candidate cards than
+      // the local OCR could read, let the configured vision model try the page.
+      // Previously any partial local result was accepted and the missing cards
+      // could never reach AI. Keep the free local path when no API is available.
+      const localComplete = ruled?.spec && (!hasOpenAICredentials() ||
+        ruled.products.length >= Math.max(1, Math.ceil((ruled.anchors?.length ?? ruled.products.length) * 0.8)))
+
+      if (localComplete) {
         // Lift the page header off the source. Everything above the first product —
         // the title, the banner, the size line — is page furniture that belongs to
         // the catalogue, and inventing a plain bar in its place loses the identity
@@ -557,6 +564,17 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
 
       const aiProducts = Array.isArray(parsed?.products) ? parsed.products : []
       if (!aiProducts.length) {
+        // If the vision fallback declines or cannot parse a page that the local
+        // reader partially understood, keep those known products rather than
+        // replacing them with a blank page.
+        if (ruled?.spec && ruled.products?.length) {
+          const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
+          for (const p of ruled.products) {
+            products.push(adoptRuleProduct(p, products.length + 1, i + 1, spec))
+          }
+          warnings.push(`Page ${i + 1}: AI returned no products; kept ${ruled.products.length} local products.`)
+          continue
+        }
         // An AI model can correctly recognise a showroom or installation spread
         // as not being a normal product grid. Keep it and extract its photos
         // instead of silently dropping the page.
@@ -774,9 +792,11 @@ function cleanPhotoCrop(img) {
 /** Builds one review draft in the shape its destination category expects. */
 function buildImageDraft(categoryId, idx, name, clean, image) {
   const id = `img${idx}_${Date.now().toString(36)}`
+  const dimension = clean.find(x => /\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/i.test(x)) ?? ''
+  const remaining = clean.filter(x => x !== dimension && x !== name)
   if (categoryId === 'accessories-led') {
     return { id, categoryId, type: 'A', name, colour: clean[1] ?? '',
-      length: clean.find(x => /mm/i.test(x)) ?? '', photo: image, drawing: null,
+      length: dimension || clean.find(x => /mm/i.test(x)) || '', photo: image, drawing: null,
       sourcePage: 1, readBy: 'image', issues: ['no dimension drawing'] }
   }
   if (categoryId === 'pvc-marble') {
@@ -785,7 +805,8 @@ function buildImageDraft(categoryId, idx, name, clean, image) {
       variants: [{ id: `${id}v0`, name: clean[1] ?? '', photo: image }],
       sourcePage: 1, readBy: 'image', issues: ['no dimension drawing'] }
   }
-  return { id, categoryId, name, subtitle: clean[1] ?? '', third: clean[2] ?? '',
+  return { id, categoryId, name, subtitle: dimension || remaining[0] || '',
+    third: remaining.find(x => x !== dimension) ?? '',
     photo: image, drawing: null, sourcePage: 1, readBy: 'image', wantsDrawing: false, issues: [] }
 }
 
