@@ -517,6 +517,15 @@ export async function readWithSpec(page, spec) {
 
   const px = (v) => Math.round(v * mm)
 
+  // Keep the measured photo rectangles alongside the data. The importer can
+  // later match them to an embedded PDF image and use that original object;
+  // the rendered crop remains the safe fallback when no native object matches.
+  const rememberSourceBox = (product, key, box) => {
+    if (!box || box.w <= 0 || box.h <= 0) return
+    product.__sourceBoxes ??= {}
+    product.__sourceBoxes[key] = { x: box.x, y: box.y, w: box.w, h: box.h }
+  }
+
   /**
    * Places a field box against its anchor.
    *
@@ -564,7 +573,9 @@ export async function readWithSpec(page, spec) {
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.
       if (f.type === 'blockPhoto') {
-        product[f.key] = dataUrl(crop(page, a.x, a.y, a.w, a.h))
+        const block = { x: a.x, y: a.y, w: a.w, h: a.h }
+        rememberSourceBox(product, f.key, block)
+        product[f.key] = dataUrl(crop(page, block.x, block.y, block.w, block.h))
         continue
       }
 
@@ -724,15 +735,20 @@ export async function readWithSpec(page, spec) {
             ? product.__bounds[f.topField][1] + px(f.topMarginMm ?? 2) : b.y
           const bottom = f.bottomField && product.__bounds?.[f.bottomField]
             ? product.__bounds[f.bottomField][0] - px(f.bottomMarginMm ?? 2) : b.y + b.h
-          const dyn = crop(page, b.x, top, b.w, Math.max(1, bottom - top))
+          const photoBox = { x: b.x, y: top, w: b.w, h: Math.max(1, bottom - top) }
+          rememberSourceBox(product, f.key, photoBox)
+          const dyn = crop(page, photoBox.x, photoBox.y, photoBox.w, photoBox.h)
           product[f.key] = f.source ? dataUrl(dyn) : dataUrl(cleanPhoto(dyn))
         } else {
+          rememberSourceBox(product, f.key, b)
           product[f.key] = f.source ? dataUrl(region) : dataUrl(cleanPhoto(region))
         }
       } else if (f.type === 'lineart') {
         product[f.key] = dataUrl(cleanLineart(region, spec.inkCut ?? 185))
       } else if (f.type === 'finishes') {
         const parts = splitStrip(region, { minAreaFrac: 0.012 })
+        product.__sourceBoxes ??= {}
+        product.__sourceBoxes[f.key] = []
 
         // The label box is a SEARCH REGION, like a text box. Row heights vary
         // between pages (PVC page 3's rows are taller than page 2's), so a fixed
@@ -766,6 +782,7 @@ export async function readWithSpec(page, spec) {
               name: snapTo(text, FINISHES).value || text,
               photo: dataUrl(cleanPhoto(crop(page, left, b.y, right - left, b.h))),
             })
+            product.__sourceBoxes[f.key].push({ x: left, y: b.y, w: right - left, h: b.h })
           }
         } else {
           for (const part of parts) {
@@ -779,6 +796,7 @@ export async function readWithSpec(page, spec) {
             // finish — that is how these templates distinguish the two.
             if (lb && !snapped.value) { leftover ??= dataUrl(cleanPhoto(part.img)); continue }
             list.push({ name: snapped.value || label, photo: dataUrl(cleanPhoto(part.img)) })
+            product.__sourceBoxes[f.key].push({ x: b.x + part.x0, y: b.y, w: part.x1 - part.x0, h: b.h })
           }
         }
         product[f.key] = list

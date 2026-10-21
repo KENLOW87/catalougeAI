@@ -22,6 +22,7 @@ import {
 import { readWithRules, ruleReadIsUsable, describeReport } from './readers/index.mjs'
 import { findAnchors } from './readers/spec.mjs'
 import { BUILTIN_SPECS } from './readers/specs.mjs'
+import { extractNativePdfImages, matchNativePdfImage } from './native-pdf-images.mjs'
 import { ocr, shutdownOcr } from './ocr.mjs'
 import { suggestDestination, suggestedCatalogue } from '../src/lib/route.js'
 
@@ -225,6 +226,48 @@ export function cutSourceAsset(page, box) {
   return `data:image/png;base64,${toBuffer(img).toString('base64')}`
 }
 
+/**
+ * Prefer the original embedded PDF image for a locally-read product photo.
+ * The reader measured its field in the 400-DPI page, while Poppler reports
+ * native image coordinates in its own XML page units, so the matcher handles
+ * the conversion and rejects ambiguous/background objects. If anything is
+ * uncertain, the existing source crop stays untouched.
+ */
+function nativePhoto(nativePage, assetPage, box) {
+  const image = matchNativePdfImage(nativePage, box, assetPage)
+  return image?.data ?? null
+}
+
+function preferNativePhotos(product, nativePage, assetPage) {
+  if (!product?.__sourceBoxes || !nativePage) return product
+  const out = { ...product }
+  const boxes = product.__sourceBoxes
+  const direct = nativePhoto(nativePage, assetPage, boxes.photo)
+  if (direct) {
+    out.photo = direct
+    out.sourcePreserved = true
+  }
+  for (const key of ['finishes', 'variants']) {
+    if (!Array.isArray(out[key]) || !Array.isArray(boxes[key])) continue
+    out[key] = out[key].map((item, index) => {
+      const image = nativePhoto(nativePage, assetPage, boxes[key][index])
+      return image ? { ...item, photo: image, sourcePreserved: true } : item
+    })
+  }
+  delete out.__sourceBoxes
+  return out
+}
+
+function preferNativeAiPhoto(nativePage, assetPage, box) {
+  if (!nativePage || !box) return null
+  return nativePhoto(nativePage, assetPage, {
+    x: box.x * assetPage.width,
+    y: box.y * assetPage.height,
+    w: box.w * assetPage.width,
+    h: box.h * assetPage.height,
+  })
+}
+
 export function hasCredentials() {
   return Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
 }
@@ -328,6 +371,7 @@ function adoptRuleProduct(p, index, pageNo, spec) {
     id: `ing${index}_${Date.now().toString(36)}`,
     name: p.name ?? '',
     drawing: p.drawing ?? null,
+    sourcePreserved: Boolean(p.sourcePreserved),
     sourcePage: pageNo,
     readBy: 'rules',
   }
@@ -450,6 +494,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     }
     await writeFile(pdfPath, bytes)
 
+    // This is deliberately additive. Text/layout recognition still uses the
+    // rendered pages below, while embedded raster objects are kept available
+    // as higher-fidelity photo sources for products whose boxes can be matched.
+    const nativePages = await extractNativePdfImages(pdfPath, dir, onProgress)
     const visionPages = await renderPages(pdfPath, dir, VISION_DPI, 'v', onProgress, shouldStop)
     const assetPages = await renderPages(pdfPath, dir, ASSET_DPI, 'a', onProgress, shouldStop)
 
@@ -472,6 +520,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       // Try the local rule readers first. They cost nothing and need no key, so
       // more pages of an existing catalogue never touch the API.
       const assetPage = readImage(assetPages[Math.min(i, assetPages.length - 1)])
+      const nativePage = nativePages.find(p => p.number === i + 1) ?? null
       let ruled = null
       try {
         ruled = await readWithRules(assetPage, onProgress, i + 1)
@@ -527,7 +576,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
           }
         }
 
-        for (const p of ruled.products) {
+        for (const raw of ruled.products) {
+          const p = preferNativePhotos(raw, nativePage, assetPage)
           // A layout with no category of its own (the shape-based photo grid) lands
           // in whichever catalogue the user had open.
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
@@ -612,7 +662,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         // replacing them with a blank page.
         if (ruled?.spec && ruled.products?.length) {
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
-          for (const p of ruled.products) {
+          for (const raw of ruled.products) {
+            const p = preferNativePhotos(raw, nativePage, assetPage)
             products.push(adoptRuleProduct(p, products.length + 1, i + 1, spec))
           }
           warnings.push(`Page ${i + 1}: AI returned no products; kept ${ruled.products.length} local products.`)
@@ -663,7 +714,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         if (draft.type === 'B') {
           draft.finishes = (p.finishes ?? []).map((f, k) => {
             let photo = null
-            try { photo = f.photo_box ? cutSourceAsset(assetPage, f.photo_box) : null } catch {}
+            try {
+              photo = preferNativeAiPhoto(nativePage, assetPage, f.photo_box) ??
+                (f.photo_box ? cutSourceAsset(assetPage, f.photo_box) : null)
+            } catch {}
             return {
               id: `${draft.id}f${k}`,
               name: f.name ?? '', badge: f.badge ?? '', photo,
@@ -674,7 +728,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
           if (!draft.finishes.length) warnings.push(`${draft.name || 'A featured product'}: no finishes found.`)
         } else {
           try {
-            if (p.photo_box) draft.photo = cutSourceAsset(assetPage, p.photo_box)
+            if (p.photo_box) draft.photo = preferNativeAiPhoto(nativePage, assetPage, p.photo_box) ??
+              cutSourceAsset(assetPage, p.photo_box)
           } catch { warnings.push(`${draft.name || 'A product'}: could not cut the product photo.`) }
         }
 
