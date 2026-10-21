@@ -131,7 +131,10 @@ export const BUILTIN_SPECS = [
       pages: [9],
       boxes: [
         { x: 6, y: 27, w: 54, h: 98 },
-        { x: 6, y: 155, w: 54, h: 135 },
+        // M05 starts below the separator, at about 198mm. The old 155mm
+        // anchor crossed the bottom of M04 and made its photo crop include
+        // M04's note plus the top of M05.
+        { x: 6, y: 198, w: 54, h: 96 },
       ],
     },
     kinds: [{
@@ -144,7 +147,12 @@ export const BUILTIN_SPECS = [
         { key: 'subtitle', type: 'text', lightText: true, required: true,
           valueByAnchor: ['300mm x 300mm', '300mm x 300mm'], matches: /\d+\s*mm/i,
           box: { x: 3, y: 1, w: 48, h: 1 } },
-        { key: 'photo', type: 'photo', box: { x: 3, y: 25, w: 48, h: 60 } },
+        { key: 'photo', type: 'photo', boxByAnchor: [
+          { x: 3, y: 25, w: 48, h: 60 },
+          // M05 has a taller title block than the fixed box used by M04.
+          // Start below the title and stop above the printed size caption.
+          { x: 3, y: 32, w: 48, h: 46 },
+        ], box: { x: 3, y: 25, w: 48, h: 60 } },
         { key: 'drawing', type: 'lineart', box: { x: 58, y: 0, w: 48, h: 92 } },
       ],
     }],

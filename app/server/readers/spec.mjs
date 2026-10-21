@@ -583,7 +583,14 @@ export async function readWithSpec(page, spec) {
       // with its OWN box) has no single box of its own — only its parts do, read
       // further down. Computing `b`/`region` here against a nonexistent `f.box`
       // would crash before that branch ever got a chance to run.
-      const b = f.parts ? null : boxAt(a, f.box, f)
+      // A fixed layout can have the same card shape with a different vertical
+      // arrangement on one anchor (the Wainscoting M04/M05 page is the concrete
+      // example). Let a spec provide a per-anchor box without making the reader
+      // duplicate the whole product kind. The ordinary `box` remains the default.
+      const fieldBox = Array.isArray(f.boxByAnchor)
+        ? (f.boxByAnchor[anchorIndex] ?? f.box)
+        : f.box
+      const b = f.parts ? null : boxAt(a, fieldBox, f)
       const region = f.parts ? null : crop(page, b.x, b.y, b.w, b.h)
 
       if (f.type === 'text') {
