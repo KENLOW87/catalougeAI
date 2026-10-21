@@ -24,9 +24,10 @@ Known Wainscoting, Cornering & Mirror layout gaps: pages 3-5 have readers, but p
 6 is Installation, page 7 is Wave Crystal Brick, page 8 is a Mirror page, page 9 is
 the M04/M05 mirror-card layout, and page 10 is the Half Moon Mirror feature layout.
 These need dedicated code/name/size readers; re-importing cannot fix them while they
-fall through to whole-page fallback. Pages 4, 5, 8 and 9 now have narrow fixed-layout
-readers for the marked C-R80/C-R100, CW02-CW04, M01-M03 and M04-M05 content; keep
-those fixes intact when improving the remaining pages.
+fall through to whole-page fallback. Pages 4, 5, 7, 8, 9 and 10 now have narrow
+fixed-layout readers for the marked C-R80/C-R100, CW02-CW04, Wave Crystal Brick,
+M01-M03, M04-M05 and HM01 positions; keep those fixes intact when improving the
+remaining pages.
 
 ## Baseline preservation rule
 

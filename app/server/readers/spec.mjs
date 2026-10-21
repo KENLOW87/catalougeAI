@@ -725,9 +725,9 @@ export async function readWithSpec(page, spec) {
           const bottom = f.bottomField && product.__bounds?.[f.bottomField]
             ? product.__bounds[f.bottomField][0] - px(f.bottomMarginMm ?? 2) : b.y + b.h
           const dyn = crop(page, b.x, top, b.w, Math.max(1, bottom - top))
-          product[f.key] = dataUrl(cleanPhoto(dyn))
+          product[f.key] = f.source ? dataUrl(dyn) : dataUrl(cleanPhoto(dyn))
         } else {
-          product[f.key] = dataUrl(cleanPhoto(region))
+          product[f.key] = f.source ? dataUrl(region) : dataUrl(cleanPhoto(region))
         }
       } else if (f.type === 'lineart') {
         product[f.key] = dataUrl(cleanLineart(region, spec.inkCut ?? 185))

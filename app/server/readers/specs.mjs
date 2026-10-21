@@ -9,6 +9,46 @@
 
 export const BUILTIN_SPECS = [
   {
+    // Page 7 is a two-card feature sheet. The left side of each row is the
+    // actual Wave Crystal Brick product; the remaining photos are installed /
+    // showroom examples and must not become extra products.
+    id: 'wainscoting-wave-crystal-brick',
+    title: 'Wainscoting Wave Crystal Brick',
+    builtin: true,
+    anchor: { type: 'fixed', pages: [7], boxes: [
+      { x: 5, y: 28, w: 82, h: 96 },
+      { x: 5, y: 126, w: 82, h: 96 },
+    ] },
+    kinds: [{ id: 'wave-crystal-fixed', fields: [
+      { key: 'name', type: 'text', required: true,
+        valueByAnchor: ['Wave Crystal Brick (Full)', 'Wave Crystal Brick (End)'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
+        valueByAnchor: ['200mm x 50mm(T) x 100mm', '100mm x 50mm(T) x 100mm'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', source: true, box: { x: 0, y: 0, w: 78, h: 67 } },
+    ] }],
+  },
+  {
+    // Page 10 has two named positions of the same Half Moon Mirror. The lower
+    // four photos are lighting examples, not separate products.
+    id: 'wainscoting-half-moon-mirror',
+    title: 'Wainscoting Half Moon Mirror',
+    builtin: true,
+    anchor: { type: 'fixed', pages: [10], boxes: [
+      { x: 1, y: 28, w: 102, h: 126 },
+      { x: 107, y: 28, w: 102, h: 126 },
+    ] },
+    kinds: [{ id: 'half-moon-fixed', fields: [
+      { key: 'name', type: 'text', required: true,
+        valueByAnchor: ['HM01 RIGHT', 'HM01 LEFT'], box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
+        valueByAnchor: ['700mm (W) x 1400mm (L)', '700mm (W) x 1400mm (L)'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', source: true, box: { x: 0, y: 12, w: 102, h: 112 } },
+    ] }],
+  },
+  {
     // Page 8 has three mirror cards in one left column. M03 is pale enough that
     // the generic block detector can lose it, while the red review circles mark
     // the adjacent technical drawings. Keep all three cards and drawings as a
