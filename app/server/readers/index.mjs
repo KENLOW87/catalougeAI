@@ -61,7 +61,7 @@ export function ruleReadIsUsable(result, spec) {
  * Picks the layout that best fits this page and reads it.
  * @returns { spec, products, warnings } or { spec: null } when nothing matches
  */
-export async function readWithRules(page, onProgress = () => {}) {
+export async function readWithRules(page, onProgress = () => {}, pageNo = null) {
   // Record what EVERY layout made of the page, including the ones that found
   // nothing. When a read fails, "no layout matched" on its own is useless — the
   // counts say whether the page was not recognised at all, or recognised and then
@@ -72,15 +72,15 @@ export async function readWithRules(page, onProgress = () => {}) {
   // distinctive mark is always a better answer than one that keys off "looks like a
   // photo", so the fallback only gets a turn when nothing specific fits.
   const rounds = [
-    BUILTIN_SPECS.filter(s => !s.fallback),
-    BUILTIN_SPECS.filter(s => s.fallback),
+    BUILTIN_SPECS.filter(s => !s.fallback && !s.augment),
+    BUILTIN_SPECS.filter(s => s.fallback && !s.augment),
   ]
 
   for (const round of rounds) {
     const candidates = []
     for (const spec of round) {
       try {
-        const anchors = findAnchors(page, spec.anchor)
+        const anchors = findAnchors(page, { ...spec.anchor, pageNo })
         report.push({ title: spec.title, found: anchors.length })
         if (anchors.length) candidates.push({ spec, count: anchors.length })
       } catch (e) {
@@ -96,8 +96,17 @@ export async function readWithRules(page, onProgress = () => {}) {
       onProgress(`Recognised the "${spec.title}" layout (${count} products) — reading it locally…`)
       const entry = report.find(r => r.title === spec.title)
       try {
-        const result = await readWithSpec(page, spec)
-        if (ruleReadIsUsable(result, spec)) return { spec, ...result }
+        const result = await readWithSpec(page, { ...spec, anchor: { ...spec.anchor, pageNo } })
+        if (ruleReadIsUsable(result, spec)) {
+          const augmentProducts = []
+          for (const extra of BUILTIN_SPECS.filter(s => s.augment)) {
+            const extraAnchors = findAnchors(page, { ...extra.anchor, pageNo })
+            if (!extraAnchors.length) continue
+            const extraResult = await readWithSpec(page, { ...extra, anchor: { ...extra.anchor, pageNo } })
+            if (ruleReadIsUsable(extraResult, extra)) augmentProducts.push(...extraResult.products)
+          }
+          return { spec, ...result, products: [...result.products, ...augmentProducts] }
+        }
         entry.read = `${result.products.length} read, but the layout's own fields came back empty`
       } catch (e) {
         entry.read = `failed: ${String(e.message ?? e)}`

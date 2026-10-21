@@ -9,6 +9,99 @@
 
 export const BUILTIN_SPECS = [
   {
+    // Page 8 has three mirror cards in one left column. M03 is pale enough that
+    // the generic block detector can lose it, while the red review circles mark
+    // the adjacent technical drawings. Keep all three cards and drawings as a
+    // page-specific, exact layout.
+    id: 'wainscoting-mirror-cards',
+    title: 'Wainscoting mirror cards (M01-M03)',
+    builtin: true,
+    anchor: { type: 'fixed', pages: [8], boxes: [
+      { x: 5, y: 27, w: 48, h: 85 },
+      { x: 5, y: 118, w: 48, h: 85 },
+      { x: 5, y: 184, w: 48, h: 85 },
+    ] },
+    kinds: [{ id: 'mirror-fixed', fields: [
+      { key: 'name', type: 'text', required: true,
+        valueByAnchor: ['M01 Full Mirror', 'M02 Quater Mirror', 'M03 Half Mirror'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
+        valueByAnchor: ['304mm x 304mm', '215mm x 215mm', '304mm x 304mm'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', box: { x: 1, y: 15, w: 46, h: 55 } },
+      { key: 'drawing', type: 'lineart', box: { x: 60, y: 0, w: 50, h: 85 } },
+    ] }],
+  },
+  {
+    // Page 4 corner-edge profiles are feature diagrams rather than photo blocks.
+    id: 'wainscoting-corner-edge',
+    title: 'Wainscoting corner-edge profiles (C-R80/C-R100)',
+    builtin: true,
+    augment: true,
+    anchor: { type: 'fixed', pages: [4], boxes: [
+      { x: 104, y: 88, w: 96, h: 42 },
+      { x: 104, y: 132, w: 96, h: 55 },
+    ] },
+    kinds: [{ id: 'corner-edge', fields: [
+      { key: 'name', type: 'text', required: true,
+        valueByAnchor: ['C-R80', 'C-R100'], box: { x: 55, y: 0, w: 40, h: 12 } },
+      { key: 'size', type: 'text', required: true, matches: /\d+\s*mm/i,
+        valueByAnchor: ['115mm', '143mm'], box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'drawing', type: 'lineart', box: { x: 0, y: 0, w: 96, h: 42 } },
+    ] }],
+  },
+  {
+    // CW02-CW04 each combine a top product card with its matching drawing below.
+    id: 'wainscoting-corner-flower',
+    title: 'Wainscoting corner flowers (CW02-CW04)',
+    builtin: true,
+    augment: true,
+    anchor: { type: 'fixed', pages: [5], boxes: [
+      { x: 5, y: 166, w: 54, h: 90 },
+      { x: 76, y: 166, w: 54, h: 90 },
+      { x: 147, y: 166, w: 54, h: 90 },
+    ] },
+    kinds: [{ id: 'corner-flower-fixed', fields: [
+      { key: 'name', type: 'text', required: true,
+        valueByAnchor: ['CW02', 'CW03', 'CW04'], box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
+        valueByAnchor: ['172mm x 172mm x 35mm', '172mm x 172mm x 20mm', '147mm x 147mm x 12mm'],
+        box: { x: 1, y: 1, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', box: { x: 1, y: 10, w: 52, h: 35 } },
+      { key: 'drawing', type: 'lineart', box: { x: 1, y: 47, w: 52, h: 40 } },
+    ] }],
+  },
+  {
+    // Page 9 is a special mirror layout: the M04 and M05 cards are surrounded
+    // by diagrams and red review boxes, so connected-component photo detection
+    // splits them apart. Use the measured card positions only on that page.
+    id: 'wainscoting-mirror-folded',
+    title: 'Wainscoting mirror cards (M04/M05)',
+    builtin: true,
+    anchor: {
+      type: 'fixed',
+      pages: [9],
+      boxes: [
+        { x: 6, y: 27, w: 54, h: 98 },
+        { x: 6, y: 155, w: 54, h: 135 },
+      ],
+    },
+    kinds: [{
+      id: 'mirror-folded-card',
+      label: 'M04/M05 card',
+      fields: [
+        { key: 'name', type: 'text', required: true,
+          valueByAnchor: ['M04 Full Diamond Mirror', 'M05 Bronze Brick Mirror'],
+          box: { x: 4, y: 1, w: 47, h: 22 } },
+        { key: 'subtitle', type: 'text', lightText: true, required: true,
+          valueByAnchor: ['300mm x 300mm', '300mm x 300mm'], matches: /\d+\s*mm/i,
+          box: { x: 3, y: 1, w: 48, h: 1 } },
+        { key: 'photo', type: 'photo', box: { x: 3, y: 25, w: 48, h: 60 } },
+        { key: 'drawing', type: 'lineart', box: { x: 58, y: 0, w: 48, h: 92 } },
+      ],
+    }],
+  },
+  {
     // The same photo-grid shape, but for a CARD style where the badge number and
     // product code print INSIDE the panel, above the photo, in light text on the
     // panel's own mid-tone background — not in a caption band below it. The block
@@ -186,6 +279,8 @@ export const BUILTIN_SPECS = [
             from: 'blockBottom', box: { x: 0, y: -23, w: 0, h: 24 } },
           { key: 'photo', type: 'photo', topField: 'name', bottomField: 'subtitle',
             box: { x: 0, y: 38, w: 0, h: 25 } },
+          // Technical drawings sit in the adjacent column; keep them with M01-M03.
+          { key: 'drawing', type: 'lineart', box: { x: 62, y: 0, w: 48, h: 82 } },
         ],
       },
       {

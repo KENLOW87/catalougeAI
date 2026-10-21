@@ -80,8 +80,12 @@ const SCHEMA = {
         properties: {
           type: { type: 'string', enum: ['A', 'B'] },
           name: { type: 'string' },
+          code: { type: 'string' },
           colour: { type: 'string' },
           length: { type: 'string' },
+          size: { type: 'string' },
+          category: { type: 'string' },
+          description: { type: 'string' },
           photo_box: BOX,
           drawing_box: BOX,
           finishes: {
@@ -126,13 +130,21 @@ Rules that matter:
   numbering is assigned by the catalogue system, not taken from the page.
 - Ignore page furniture: the top banner, the lifestyle photo gallery, and any row
   of feature icons along the bottom. Those are template, not products.
-- Return products in reading order: left to right, then top to bottom.
+- If a page mixes product cards with showroom/display/lifestyle photos, return the
+  product cards only. A display photo is not a product unless it has its own clear
+  product identity (code/name/size) printed with it.
+- Return every product even when cards are scattered or the page layout changes.
+  Return them in reading order: left to right, then top to bottom. Do not merge
+  two cards into one product and do not invent a missing card.
 
 Boxes are normalised 0-1 against the page. Give your best estimate of the tight
 bounding box; it will be refined automatically, so approximate is fine, but do not
 include a neighbouring product inside a box.
-- photo_box  = the photograph of the product only, excluding any text or drawing.
-- drawing_box = the technical line drawing with millimetre callouts. Include the
+- photo_box  = the original product-photo rectangle only, excluding text or drawing.
+  Keep the complete visible product and its original background inside that photo
+  rectangle. Do not remove/whiten the background, erase highlights, isolate the
+  object, or crop tightly around the silhouette.
+- drawing_box = the original technical line-drawing rectangle with millimetre callouts. Include the
   callout text ("10mm", "20mm") INSIDE this box - it is part of the drawing.`
 
 /** Renders every page of a PDF at a given DPI, returning file paths in page order. */
@@ -198,6 +210,18 @@ function cutAsset(page, box, kind) {
     // running blob removal here can mistake white product facets for background.
     img = light ? img : trimToContent(keepLargestBlob(whitened), { gap: 45, pad: 4 })
   }
+  return `data:image/png;base64,${toBuffer(img).toString('base64')}`
+}
+
+/**
+ * Cut the exact source rectangle selected by the universal PDF reader.
+ * Unlike cutAsset(), this deliberately performs no whitening, blob removal,
+ * ink extraction, or content trimming. Unknown layouts must not lose pale
+ * product faces, shadows, texture, or the original background.
+ */
+export function cutSourceAsset(page, box) {
+  const snapped = snapBox(page, box)
+  const img = crop(page, snapped.x, snapped.y, snapped.w, snapped.h)
   return `data:image/png;base64,${toBuffer(img).toString('base64')}`
 }
 
@@ -446,7 +470,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       const assetPage = readImage(assetPages[Math.min(i, assetPages.length - 1)])
       let ruled = null
       try {
-        ruled = await readWithRules(assetPage, onProgress)
+        ruled = await readWithRules(assetPage, onProgress, i + 1)
       } catch (e) {
         warnings.push(`Page ${i + 1}: the local reader failed (${e.message}); using the AI reader.`)
       }
@@ -596,31 +620,42 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
           id: `ing${products.length + 1}_${Date.now().toString(36)}`,
           type: p.type === 'B' ? 'B' : 'A',
           name,
+          code,
           colour: p.colour ?? '',
           length: p.length ?? p.size ?? '',
+          size: p.size ?? '',
           subtitle: p.size ?? p.description ?? p.category ?? '',
           third: p.category ?? '',
+          category: p.category ?? '',
           categoryId: 'generic-ai',
           readBy: 'ai',
           photo: null,
           drawing: null,
           sourcePage: i + 1,
+          sourcePreserved: true,
+          sourceBox: p.photo_box ?? null,
+          sourceDrawingBox: p.drawing_box ?? null,
         }
 
         try {
-          if (p.drawing_box) draft.drawing = cutAsset(assetPage, p.drawing_box, 'drawing')
+          if (p.drawing_box) draft.drawing = cutSourceAsset(assetPage, p.drawing_box)
         } catch { warnings.push(`${draft.name || 'A product'}: could not cut the dimension drawing.`) }
 
         if (draft.type === 'B') {
           draft.finishes = (p.finishes ?? []).map((f, k) => {
             let photo = null
-            try { photo = f.photo_box ? cutAsset(assetPage, f.photo_box, 'photo') : null } catch {}
-            return { id: `${draft.id}f${k}`, name: f.name ?? '', badge: f.badge ?? '', photo }
+            try { photo = f.photo_box ? cutSourceAsset(assetPage, f.photo_box) : null } catch {}
+            return {
+              id: `${draft.id}f${k}`,
+              name: f.name ?? '', badge: f.badge ?? '', photo,
+              sourcePreserved: true,
+              sourceBox: f.photo_box ?? null,
+            }
           })
           if (!draft.finishes.length) warnings.push(`${draft.name || 'A featured product'}: no finishes found.`)
         } else {
           try {
-            if (p.photo_box) draft.photo = cutAsset(assetPage, p.photo_box, 'photo')
+            if (p.photo_box) draft.photo = cutSourceAsset(assetPage, p.photo_box)
           } catch { warnings.push(`${draft.name || 'A product'}: could not cut the product photo.`) }
         }
 

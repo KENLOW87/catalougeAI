@@ -294,6 +294,16 @@ export function findTextBlockAnchors(page, anchor) {
 }
 
 export function findAnchors(page, anchor) {
+  if (anchor?.type === 'fixed') {
+    if (anchor.pages?.length && !anchor.pages.includes(anchor.pageNo)) return []
+    const mm = page.width / 210
+    return (anchor.boxes ?? []).map(box => ({
+      x: Math.round(box.x * mm),
+      y: Math.round(box.y * mm),
+      w: Math.round(box.w * mm),
+      h: Math.round(box.h * mm),
+    }))
+  }
   // A layout with no coloured mark finds its products by shape instead.
   if (anchor?.type === 'blocks') return findBlockAnchors(page, anchor)
   if (anchor?.type === 'textBlocks') return findTextBlockAnchors(page, anchor)
@@ -549,7 +559,7 @@ export async function readWithSpec(page, spec) {
   // UNRELATED card shapes can try each kind in turn against the same anchor and
   // keep whichever one actually worked, instead of a single spec only ever being
   // able to describe one shape of product.
-  const readKind = async (a, kind) => {
+  const readKind = async (a, kind, anchorIndex) => {
     const product = { _spec: spec.id, _kind: kind.id }
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.
@@ -581,7 +591,11 @@ export async function readWithSpec(page, spec) {
         // above it takes one line ("PW01") or two ("GOLD" / "PW02").
         let bounds = null
         let value = null       // set directly by joinLines/parts; otherwise read below
-        if (f.parts) {
+        const preset = Array.isArray(f.valueByAnchor) ? f.valueByAnchor[anchorIndex] : f.value
+        if (preset != null) {
+          value = String(preset)
+          bounds = [b.y, b.y + b.h]
+        } else if (f.parts) {
           // A title that is TWO DIFFERENT COLOURS of text side by side — a light
           // badge code and, beside it, a dark descriptive word ("CSW" white,
           // "- Coner Solid Wainscoting" brown) — cannot be read as one box at one
@@ -798,7 +812,7 @@ export async function readWithSpec(page, spec) {
     const candidateKinds = tryAllKinds ? kinds : [kindFor(a)]
     let winner = null
     for (const kind of candidateKinds) {
-      const attempt = await readKind(a, kind)
+      const attempt = await readKind(a, kind, anchors.indexOf(a))
       if (!attempt.__reject) { winner = attempt; break }
     }
     if (!winner) continue
