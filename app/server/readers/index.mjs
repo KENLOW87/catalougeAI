@@ -57,6 +57,27 @@ export function ruleReadIsUsable(result, spec) {
   return Math.max(...result.products.map(filled)) >= (spec?.minFill ?? 0.5)
 }
 
+// A mixed page can be read once by the generic card reader and once by a
+// page-specific augment (for example CW02-CW04). Prefer the augment's exact
+// values instead of importing the same physical card twice. Codes are compared
+// in a forgiving way because OCR may omit a leading zero (CW4 vs CW04).
+const productKey = name => {
+  const s = String(name ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const code = s.match(/^([A-Z]{1,5})0*(\d+)$/)
+  return code ? `${code[1]}${Number(code[2])}` : s
+}
+
+function mergeAugmentProducts(base, extras) {
+  const merged = [...base]
+  for (const extra of extras) {
+    const key = productKey(extra.name)
+    const at = key ? merged.findIndex(p => productKey(p.name) === key) : -1
+    if (at >= 0) merged[at] = extra
+    else merged.push(extra)
+  }
+  return merged
+}
+
 /**
  * Picks the layout that best fits this page and reads it.
  * @returns { spec, products, warnings } or { spec: null } when nothing matches
@@ -105,7 +126,16 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null) 
             const extraResult = await readWithSpec(page, { ...extra, anchor: { ...extra.anchor, pageNo } })
             if (ruleReadIsUsable(extraResult, extra)) augmentProducts.push(...extraResult.products)
           }
-          return { spec, ...result, products: [...result.products, ...augmentProducts] }
+          return {
+            spec,
+            ...result,
+            // This is deliberate evidence that a page-specific reader found
+            // real products. The ingest layer must not send the page to a paid
+            // vision fallback merely because decorative photos inflated the
+            // generic anchor count.
+            localEvidence: augmentProducts.length > 0,
+            products: mergeAugmentProducts(result.products, augmentProducts),
+          }
         }
         entry.read = `${result.products.length} read, but the layout's own fields came back empty`
       } catch (e) {

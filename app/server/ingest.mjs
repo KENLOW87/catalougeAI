@@ -479,7 +479,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       // the local OCR could read, let the configured vision model try the page.
       // Previously any partial local result was accepted and the missing cards
       // could never reach AI. Keep the free local path when no API is available.
-      const localComplete = ruled?.spec && (!hasOpenAICredentials() ||
+      const localComplete = ruled?.spec && (!hasOpenAICredentials() || ruled.localEvidence ||
         ruled.products.length >= Math.max(1, Math.ceil((ruled.anchors?.length ?? ruled.products.length) * 0.8)))
 
       if (localComplete) {
