@@ -9,6 +9,14 @@
 
 export const BUILTIN_SPECS = [
   {
+    // These pages are catalogue material, but contain no product cards. They
+    // stay in the exported flow as whole pages and must never trigger AI OCR.
+    id: 'wainscoting-non-product-pages',
+    title: 'Wainscoting cover / comparison / installation',
+    builtin: true,
+    nonProductPages: [1, 2, 6],
+  },
+  {
     // Page 7 is a two-card feature sheet. The left side of each row is the
     // actual Wave Crystal Brick product; the remaining photos are installed /
     // showroom examples and must not become extra products.

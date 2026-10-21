@@ -475,6 +475,14 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         warnings.push(`Page ${i + 1}: the local reader failed (${e.message}); using the AI reader.`)
       }
 
+      if (ruled?.noProducts) {
+        const details = extractDetailPhotos(assetPage)
+        products.push(keepWholePage(readImage(visionPages[i]), i + 1, intoCategory, details))
+        onProgress(`Page ${i + 1} is catalogue material, not a product grid — kept whole` +
+          `${details.length ? `, ${details.length} close-up${details.length === 1 ? '' : 's'} extracted` : ''}.`)
+        continue
+      }
+
       // If the geometry detector found substantially more candidate cards than
       // the local OCR could read, let the configured vision model try the page.
       // Previously any partial local result was accepted and the missing cards

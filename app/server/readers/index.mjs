@@ -89,6 +89,16 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null) 
   // read badly, which are different problems with different fixes.
   const report = []
 
+  // The Wainscoting source has three intentional non-product spreads: cover,
+  // quality comparison, and installation. They are already preserved as whole
+  // pages by ingest; do not spend a paid vision call asking whether their
+  // lifestyle photos are products.
+  const noProduct = BUILTIN_SPECS.find(s => s.nonProductPages?.includes(pageNo))
+  if (noProduct) {
+    return { spec: noProduct, products: [], anchors: [], warnings: [], report,
+      noProducts: true, localEvidence: true }
+  }
+
   // Specific layouts first, then the shape-based fallback. A layout that keys off a
   // distinctive mark is always a better answer than one that keys off "looks like a
   // photo", so the fallback only gets a turn when nothing specific fits.
