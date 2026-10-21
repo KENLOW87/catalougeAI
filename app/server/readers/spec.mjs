@@ -9,7 +9,7 @@
 // spec is resolution-independent: measured on a 200 DPI preview, applied to a 400
 // DPI render.
 
-import { crop, trimToContent, keepInk, keepLargestBlob, whitenBackground, toBuffer, inkFromBright } from '../imageops.mjs'
+import { crop, trimToContent, keepInk, toBuffer, inkFromBright } from '../imageops.mjs'
 import { splitStrip } from '../split-strip.mjs'
 import { ocr, ocrLabel } from '../ocr.mjs'
 import { snapTo, repairSize, repairLength, repairLengthParen, repairFirstMm, repairCode, snapCode, trimBleed, FINISHES } from './vocab.mjs'
@@ -376,10 +376,10 @@ export function findAnchors(page, anchor) {
   return anchors
 }
 
-const cleanPhoto = img => {
-  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
-}
+// Product photos are source material, not silhouettes to be cleaned. Keep the
+// exact field crop and all of its pixels; only the catalogue CSS decides how it
+// fits the product card. Drawings still use cleanLineart below.
+const cleanPhoto = img => img
 // `inkCut` differs per layout: LED drawings are black (185), PVC's are gold (210).
 const cleanLineart = (img, cut) => trimToContent(keepInk(img, cut), { gap: 60, pad: 6 })
 

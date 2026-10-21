@@ -20,6 +20,12 @@ trim the source crop in the fallback path. Scale with the existing catalogue
 layout only; never alter the source pixels to make them fit. Keep local readers
 as the first path so this policy cannot regress a known layout.
 
+Source-photo rule (21 October 2026): for PDF product photos in known readers as
+well as fallback readers, keep the complete measured photo rectangle and its
+original background/pixels. Do not use silhouette trimming, blob removal, or
+background whitening on PDF photos. CSS may fit the image into the catalogue
+card, but the stored source image must not be downsampled or content-cropped.
+
 Known Wainscoting, Cornering & Mirror layout gaps: pages 3-5 have readers, but page
 6 is Installation, page 7 is Wave Crystal Brick, page 8 is a Mirror page, page 9 is
 the M04/M05 mirror-card layout, and page 10 is the Half Moon Mirror feature layout.

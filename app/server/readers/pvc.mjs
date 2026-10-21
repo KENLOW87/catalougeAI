@@ -4,17 +4,16 @@
 // dimension drawing; the right carries the colour finishes with their labels
 // beneath, and sometimes an installed detail photo at the far right.
 
-import { crop, trimToContent, keepInk, keepLargestBlob, whitenBackground, toBuffer } from '../imageops.mjs'
+import { crop, trimToContent, keepInk, toBuffer } from '../imageops.mjs'
 import { splitStrip } from '../split-strip.mjs'
 import { ocr, ocrLabel } from '../ocr.mjs'
 import { snapTo, repairSize, trimBleed, FINISHES } from './vocab.mjs'
 
 const dataUrl = img => `data:image/png;base64,${toBuffer(img).toString('base64')}`
 
-const cleanPhoto = img => {
-  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
-}
+// Keep the complete source photo inside the measured field. Do not whiten or
+// trim it: the product's original background and scale are part of the source.
+const cleanPhoto = img => img
 // PVC drawings are GOLD line art (luminance ~160), so the cut sits higher than
 // the 185 used for the LED template's black drawings.
 const cleanDrawing = img => trimToContent(keepInk(img, 210), { gap: 70, pad: 8 })

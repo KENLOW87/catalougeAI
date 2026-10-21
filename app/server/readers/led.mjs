@@ -4,7 +4,7 @@
 // crop whose meaning we already know. That is the whole trick: geometry supplies
 // the structure that OCR cannot.
 
-import { crop, trimToContent, keepInk, keepLargestBlob, whitenBackground, toBuffer } from '../imageops.mjs'
+import { crop, trimToContent, keepInk, toBuffer } from '../imageops.mjs'
 import { splitStrip } from '../split-strip.mjs'
 import { ocr, ocrLabel } from '../ocr.mjs'
 import { snapTo, repairLength, trimBleed, FINISHES } from './vocab.mjs'
@@ -90,10 +90,10 @@ function labelColumns(page, x0, x1, y0, y1, mm) {
   return runs.filter(([a, b]) => b - a > mm * 3)
 }
 
-function cleanPhoto(img) {
-  const { img: white, light } = whitenBackground(img, { tol: 30, agreement: 0.5 })
-  return light ? img : trimToContent(keepLargestBlob(white), { gap: 45, pad: 4 })
-}
+// Preserve the PDF's product-photo crop exactly. Background removal and blob
+// trimming can delete bright product faces or make a large source image appear
+// like a tiny sliver. The layout already supplies the photo bounds.
+function cleanPhoto(img) { return img }
 
 const cleanDrawing = img => trimToContent(keepInk(img, 185), { gap: 60, pad: 6 })
 

@@ -318,7 +318,7 @@ function extractDetailPhotos(page) {
   // (a wood-grain background, a dot pattern), not a gallery of real photos.
   return blocks.slice(0, 12).map(b => {
     try {
-      return cutAsset(page, { x: b.x / page.width, y: b.y / page.height, w: b.w / page.width, h: b.h / page.height }, 'photo')
+      return cutSourceAsset(page, { x: b.x / page.width, y: b.y / page.height, w: b.w / page.width, h: b.h / page.height })
     } catch { return null }
   }).filter(Boolean)
 }
