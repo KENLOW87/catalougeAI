@@ -15,16 +15,22 @@ function Cell({ p, editable, onEdit, onDelete }) {
   return (
     <div className="dp-item">
       <Badge n={p.slot} variant="default" />
-      <div className="dp-photo">
-        {p.photo
-          ? <img src={p.photo} alt={p.name} />
-          : <span className="dp-missing">no photo</span>}
+      <div className={`dp-visuals ${p.drawing ? 'dp-visuals--paired' : ''}`}>
+        <div className="dp-photo">
+          {p.photo
+            ? <img src={p.photo} alt={p.name} />
+            : <span className="dp-missing">no photo</span>}
+        </div>
+        {p.drawing && (
+          <div className="dp-drawing-frame">
+            <img src={p.drawing} alt="Dimension drawing" />
+          </div>
+        )}
       </div>
       <div className="dp-name">{p.name}</div>
       {(p.subtitle || p.third) && (
         <div className="dp-sub">{[p.subtitle, p.third].filter(Boolean).join(' · ')}</div>
       )}
-      {p.drawing && <img className="dp-drawing" src={p.drawing} alt="" />}
       {editable && <Hit product={p} onEdit={onEdit} onDelete={onDelete} />}
     </div>
   )

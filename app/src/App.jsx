@@ -109,6 +109,30 @@ export default function App() {
   const [showDashboard, setShowDashboard] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // The catalogue canvas owns its zoom. Intercept the browser's usual Ctrl +/-
+  // shortcut while the editor is open, and keep Ctrl+mouse-wheel available for
+  // the same adjustment without changing the browser window's zoom.
+  useEffect(() => {
+    if (print) return
+    const onKeyDown = e => {
+      if (!e.ctrlKey && !e.metaKey) return
+      const plus = e.key === '+' || e.key === '=' || e.code === 'NumpadAdd'
+      const minus = e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract'
+      const reset = e.key === '0'
+      if (!plus && !minus && !reset) return
+      e.preventDefault()
+      setZoom(current => reset ? 0.62 : Math.min(1.2, Math.max(0.3, current + (plus ? 0.05 : -0.05))))
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [print])
+
+  const zoomWithWheel = e => {
+    if (!e.ctrlKey && !e.metaKey) return
+    e.preventDefault()
+    setZoom(current => Math.min(1.2, Math.max(0.3, current + (e.deltaY < 0 ? 0.05 : -0.05))))
+  }
+
   // Which product family is selected. Derived from the open catalogue so the two
   // never disagree; only an empty family is held on its own.
   // Page headers lifted from imported PDFs, one per catalogue.
@@ -458,13 +482,13 @@ export default function App() {
         </>
 
         <div className="zoom">
-          <label>Zoom {Math.round(zoom * 100)}%</label>
+          <label>Zoom {Math.round(zoom * 100)}% <span>(Ctrl +/− or Ctrl + mouse wheel)</span></label>
           <input type="range" min="0.3" max="1.2" step="0.02" value={zoom}
                  onChange={e => setZoom(Number(e.target.value))} />
         </div>
       </aside>
 
-      <main className={`canvas ${sidebarOpen ? '' : 'canvas--full'}`}>
+      <main className={`canvas ${sidebarOpen ? '' : 'canvas--full'}`} onWheel={zoomWithWheel}>
         {!sidebarOpen && (
           <button className="side-toggle no-print" onClick={() => setSidebarOpen(true)}>
             Categories

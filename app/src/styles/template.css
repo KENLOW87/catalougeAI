@@ -228,15 +228,20 @@
   background: linear-gradient(90deg, #0d7fc4, #9ad4f0);
   color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 4.4mm;
 }
-.dp-photo { flex: 1; min-height: 0; display: grid; place-items: center; overflow: visible; }
-/* Fit the complete source rectangle inside the card. `contain` is kept as a
-   defensive fallback, but intrinsic sizing plus max constraints makes it
-   impossible for a product image to be content-cropped by the card. */
-.dp-photo img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.dp-visuals { flex: 1; min-height: 0; display: grid; gap: 2mm; }
+.dp-visuals--paired { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); }
+/* Each visual gets a quiet frame. The image itself is always contain-sized: the
+   frame may shrink it to fit, but it can never crop the source rectangle. */
+.dp-photo, .dp-drawing-frame {
+  min-width: 0; min-height: 0; display: grid; place-items: center; overflow: visible;
+  padding: 2mm; border: .35mm solid #d8dee4; border-radius: 2mm; background: #fff;
+}
+.dp-photo img, .dp-drawing-frame img {
+  display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain;
+}
+.dp-drawing-frame img { mix-blend-mode: multiply; }
 .dp-missing { font-size: 3mm; color: #b07711; }
 
 .dp-name { text-align: center; font-size: 4.6mm; line-height: 5.4mm; font-weight: 800;
   color: var(--ink); margin-top: 2mm; }
 .dp-sub { text-align: center; font-size: 3.1mm; line-height: 4mm; color: #4a4a4a; }
-.dp-drawing { width: 100%; max-height: 14mm; object-fit: contain; mix-blend-mode: multiply;
-  margin-top: 1.5mm; }

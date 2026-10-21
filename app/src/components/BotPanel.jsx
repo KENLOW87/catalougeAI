@@ -66,7 +66,6 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   // like a button rather than an assistant.
   useEffect(() => {
     if (!note?.id) return
-    setOpen(true)
     setLog(prev => (prev.some(m => m.noteId === note.id) ? prev : [...prev, {
       who: 'bot', source: 'local', noteId: note.id,
       // Checking the result of an import is the moment it is worth checking: a bad
