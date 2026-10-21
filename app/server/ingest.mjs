@@ -149,19 +149,18 @@ include a neighbouring product inside a box.
   callout text ("10mm", "20mm") INSIDE this box - it is part of the drawing.`
 
 /** Renders every page of a PDF at a given DPI, returning file paths in page order. */
-/** How many pages the PDF has, or null when pdfinfo is not available. */
+/** How many pages the PDF has, or null when pdfinfo cannot be run. */
 async function pageCount(pdfPath) {
   try {
     const { stdout } = await run('pdfinfo', [pdfPath])
     const m = String(stdout).match(/^Pages:\s+(\d+)/m)
     return m ? Number(m[1]) : null
   } catch (e) {
-    // Only a MISSING TOOL may be ignored. This swallowed every failure, so a PDF
-    // pdfinfo could not read fell through to rendering the whole file at once and
-    // failed there instead — reported as "Command failed: pdftoppm …" with the real
-    // reason, which pdfinfo had already given, thrown away.
-    if (e.code === 'ENOENT') return null
-    throw e
+    // pdfinfo is only an optimisation used to make progress messages precise.
+    // Some Windows installs can execute pdftoppm but reject pdfinfo (or expose
+    // pdfinfo through a restricted shim), so never make the entire import fail
+    // before the renderer has had a chance to read the PDF.
+    return null
   }
 }
 
@@ -238,10 +237,40 @@ function nativePhoto(nativePage, assetPage, box) {
   return image?.data ?? null
 }
 
-function preferNativePhotos(product, nativePage, assetPage) {
-  if (!product?.__sourceBoxes || !nativePage) return product
+function preferNativePhotos(product, nativePage, assetPage, preserveRendered = false) {
+  if (!product?.__sourceBoxes || !assetPage) return product
   const out = { ...product }
   const boxes = product.__sourceBoxes
+  // Wainscoting PDFs frequently reuse the same embedded raster object with
+  // different transforms. pdftohtml reports those transforms as duplicate
+  // image rectangles, so overlap matching can attach PW06's image to PW02 or
+  // put a caption/header object into a product thumbnail. The measured rendered
+  // rectangle is authoritative for this family: it keeps the complete printed
+  // photo with its original background and performs no content trimming.
+  if (preserveRendered) {
+    const rendered = box => box
+      ? cutSourceAsset(assetPage, {
+          x: box.x / assetPage.width,
+          y: box.y / assetPage.height,
+          w: box.w / assetPage.width,
+          h: box.h / assetPage.height,
+        })
+      : null
+    if (boxes.photo) {
+      const image = rendered(boxes.photo)
+      if (image) out.photo = image
+    }
+    for (const key of ['finishes', 'variants']) {
+      if (!Array.isArray(out[key]) || !Array.isArray(boxes[key])) continue
+      out[key] = out[key].map((item, index) => {
+        const image = rendered(boxes[key][index])
+        return image ? { ...item, photo: image } : item
+      })
+    }
+    delete out.__sourceBoxes
+    return out
+  }
+  if (!nativePage) return product
   const direct = nativePhoto(nativePage, assetPage, boxes.photo)
   if (direct) {
     out.photo = direct
@@ -579,7 +608,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         }
 
         for (const raw of ruled.products) {
-          const p = preferNativePhotos(raw, nativePage, assetPage)
+          const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting)
           // A layout with no category of its own (the shape-based photo grid) lands
           // in whichever catalogue the user had open.
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
@@ -665,7 +694,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         if (ruled?.spec && ruled.products?.length) {
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
           for (const raw of ruled.products) {
-            const p = preferNativePhotos(raw, nativePage, assetPage)
+            const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting)
             products.push(adoptRuleProduct(p, products.length + 1, i + 1, spec))
           }
           warnings.push(`Page ${i + 1}: AI returned no products; kept ${ruled.products.length} local products.`)

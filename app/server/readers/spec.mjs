@@ -570,6 +570,7 @@ export async function readWithSpec(page, spec) {
   // able to describe one shape of product.
   const readKind = async (a, kind, anchorIndex) => {
     const product = { _spec: spec.id, _kind: kind.id }
+    const attemptWarnings = []
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.
       if (f.type === 'blockPhoto') {
@@ -634,7 +635,7 @@ export async function readWithSpec(page, spec) {
           value = vals.join(f.partSep ?? ' ')
           if (firstTop != null) bounds = [firstTop, lastBottom]
           if (!value) {
-            warnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
+            attemptWarnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
             if (f.required) product.__reject = true
           }
         } else if (f.joinLines) {
@@ -647,7 +648,7 @@ export async function readWithSpec(page, spec) {
           // "line" of its own, by this same measure of "a band of dark pixels".
           const r = await readMultiline(page, b, mm, f, spec)
           if (!r.bounds) {
-            warnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
+            attemptWarnings.push(`${product.name || 'a product'}: no text found for "${f.key}".`)
             product[f.key] = ''
             if (f.required) product.__reject = true
             continue
@@ -680,7 +681,7 @@ export async function readWithSpec(page, spec) {
               target = crop(page, b.x, Math.max(0, chosen[0] - pad), b.w, chosen[1] - chosen[0] + pad * 2)
               bounds = chosen
             } else {
-              warnings.push(`${product.name || 'a product'}: expected ${f.line} text lines for "${f.key}", found ${lines.length}.`)
+              attemptWarnings.push(`${product.name || 'a product'}: expected ${f.line} text lines for "${f.key}", found ${lines.length}.`)
               product[f.key] = ''
               if (f.required) product.__reject = true
               continue
@@ -808,19 +809,20 @@ export async function readWithSpec(page, spec) {
         }
         product[f.key] = list
         if (leftover && f.leftoverKey) product[f.leftoverKey] = leftover
-        if (!list.length) warnings.push(`${product.name || 'a product'}: no finishes found.`)
+        if (!list.length) attemptWarnings.push(`${product.name || 'a product'}: no finishes found.`)
 
         // If most finish names are not real words, the label band was probably the
         // wrong one — a product carrying an exception note underneath, for example.
         // Say so rather than import nonsense.
         const junk = list.filter(v => !FINISHES.includes(v.name)).length
         if (list.length && junk > list.length / 2) {
-          warnings.push(`${product.name || 'a product'}: its finish labels did not read ` +
+          attemptWarnings.push(`${product.name || 'a product'}: its finish labels did not read ` +
             `(${list.map(v => v.name || '?').join(', ')}). Check this one — it may carry an ` +
             'exception note that confused the label search.')
         }
       }
     }
+    if (attemptWarnings.length) product.__warnings = attemptWarnings
     return product
   }
 
@@ -841,8 +843,10 @@ export async function readWithSpec(page, spec) {
       if (!attempt.__reject) { winner = attempt; break }
     }
     if (!winner) continue
+    if (winner.__warnings?.length) warnings.push(...winner.__warnings)
     delete winner.__reject
     delete winner.__bounds
+    delete winner.__warnings
     products.push(winner)
   }
 

@@ -24,8 +24,11 @@ export const BUILTIN_SPECS = [
     title: 'Wainscoting Wave Crystal Brick',
     builtin: true,
     anchor: { type: 'fixed', pages: [7], boxes: [
-      { x: 5, y: 28, w: 82, h: 96 },
-      { x: 5, y: 126, w: 82, h: 96 },
+      // The product photo is the small left-hand object, not the whole feature
+      // row. Keep the card anchor broad enough for the printed caption, while
+      // the per-row photo boxes stop before the showroom photos on the right.
+      { x: 5, y: 28, w: 82, h: 72 },
+      { x: 5, y: 102, w: 82, h: 72 },
     ] },
     kinds: [{ id: 'wave-crystal-fixed', fields: [
       { key: 'name', type: 'text', required: true,
@@ -34,7 +37,10 @@ export const BUILTIN_SPECS = [
       { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
         valueByAnchor: ['200mm x 50mm(T) x 100mm', '100mm x 50mm(T) x 100mm'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
-      { key: 'photo', type: 'photo', source: true, box: { x: 0, y: 0, w: 78, h: 67 } },
+      { key: 'photo', type: 'photo', source: true, boxByAnchor: [
+        { x: 6, y: 3, w: 55, h: 46 },
+        { x: 14, y: 3, w: 38, h: 45 },
+      ], box: { x: 6, y: 3, w: 55, h: 46 } },
     ] }],
   },
   {
