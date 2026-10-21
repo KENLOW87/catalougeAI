@@ -269,10 +269,12 @@ function preferNativeAiPhoto(nativePage, assetPage, box) {
 }
 
 export function hasCredentials() {
-  return Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
+  return process.env.CATALOGUE_ENABLE_AI_FALLBACK === '1' &&
+    Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
 }
 
-const hasOpenAICredentials = () => Boolean(process.env.OPENAI_API_KEY)
+const hasOpenAICredentials = () => process.env.CATALOGUE_ENABLE_AI_FALLBACK === '1' &&
+  Boolean(process.env.OPENAI_API_KEY)
 
 async function readWithOpenAI(imageData, pageNo) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
