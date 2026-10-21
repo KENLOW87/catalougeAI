@@ -25,6 +25,8 @@ well as fallback readers, keep the complete measured photo rectangle and its
 original background/pixels. Do not use silhouette trimming, blob removal, or
 background whitening on PDF photos. CSS may fit the image into the catalogue
 card, but the stored source image must not be downsampled or content-cropped.
+Do not apply `mix-blend-mode: multiply` to PDF product photos either; it changes
+the visible source background even when the stored pixels are untouched.
 
 Known Wainscoting, Cornering & Mirror layout gaps: pages 3-5 have readers, but page
 6 is Installation, page 7 is Wave Crystal Brick, page 8 is a Mirror page, page 9 is

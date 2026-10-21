@@ -460,6 +460,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     }
 
     const products = []
+    // This catalogue is fully covered by local page readers. If a future
+    // geometry regression leaves a page unresolved, keep that page locally
+    // instead of silently spending the user's OpenAI credit on a second guess.
+    const localOnlyWainscoting = /wainscoting/i.test(filename)
     for (let i = 0; i < count; i++) {
       if (shouldStop()) throw new IngestCancelled()
       onProgress(`Reading page ${i + 1} of ${count}…`)
@@ -539,6 +543,13 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       onProgress(`Page ${i + 1}: ${detail}`)
       warnings.push(`Page ${i + 1}: no products were read from this page. ${detail}`)
       unread.push(`Page ${i + 1}: ${detail}`)
+
+      if (localOnlyWainscoting) {
+        const details = extractDetailPhotos(assetPage)
+        products.push(keepWholePage(readImage(visionPages[i]), i + 1, intoCategory, details))
+        onProgress(`Page ${i + 1} was kept locally; OpenAI fallback is disabled for this Wainscoting catalogue.`)
+        continue
+      }
 
       // --- a page that is not a product grid --------------------------------
       // KEEP IT. A catalogue is not only its product tables: the cover, the "Wide
