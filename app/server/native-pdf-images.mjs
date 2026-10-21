@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { access, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
+import { readImage } from './imageops.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -34,6 +35,27 @@ const normalBox = (left, top, width, height) => {
 }
 
 const area = b => Math.max(0, b.w) * Math.max(0, b.h)
+
+// Illustrator/PDF files can store a product as RGB pixels plus a separate
+// soft-mask. Some Poppler HTML exports expose only the RGB layer, which turns
+// transparent pixels black. Do not pass that damaged object to the catalogue;
+// the caller will use the full rendered-page photo rectangle instead.
+function hasMissingMask(img) {
+  const { width, height, data } = img
+  if (width < 8 || height < 8) return false
+  let darkBorder = 0, border = 0, brightInside = 0, inside = 0
+  const step = Math.max(1, Math.round(Math.min(width, height) / 80))
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const i = (y * width + x) * 4
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+      const edge = x < width * 0.08 || x >= width * 0.92 || y < height * 0.08 || y >= height * 0.92
+      if (edge) { border++; if (lum < 28) darkBorder++ }
+      else { inside++; if (lum > 175) brightInside++ }
+    }
+  }
+  return border > 0 && inside > 0 && darkBorder / border >= 0.45 && brightInside / inside >= 0.25
+}
 
 function parsePages(xml, outputDir) {
   const pages = []
@@ -96,6 +118,7 @@ export async function extractNativePdfImages(pdfPath, outputDir, onProgress = ()
           const bytes = await readFile(image.path)
           if (bytes.length < 256) continue
           image.data = `data:${image.mime};base64,${bytes.toString('base64')}`
+          try { image.unsafe = hasMissingMask(readImage(bytes)) } catch { image.unsafe = false }
           kept.push(image)
         } catch { /* an optional object disappeared; keep the rest */ }
       }
@@ -150,7 +173,7 @@ export function matchNativePdfImage(nativePage, sourceBox, renderedPage) {
       (target.w / Math.max(1, target.h))))
     const score = (centre ? 3 : 0) + inTarget * 4 + inImage * 2 - ratio * 0.35 - (pageSized ? 5 : 0) - (tooLarge ? 3 : 0)
     return { image, score, overlap, centre, inTarget, inImage, pageSized, tooLarge }
-  }).filter(c => c.overlap > 0 && c.centre && !c.pageSized && !c.tooLarge && c.inTarget >= 0.2)
+  }).filter(c => c.overlap > 0 && c.centre && !c.image.unsafe && !c.pageSized && !c.tooLarge && c.inTarget >= 0.2)
     .sort((a, b) => b.score - a.score)
   return candidates[0]?.image ?? null
 }
