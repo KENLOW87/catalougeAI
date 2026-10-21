@@ -36,6 +36,11 @@ export const COMMAND_HELP = [
     items: ['Replace PV07 with this photo', 'Remove PV07 and replace it with my updated photo'],
   },
   {
+    group: 'Clean a product photo',
+    note: 'the bot removes a dark background locally and asks you to confirm',
+    items: ['Remove the background from PV07', 'Clean the background of PV07'],
+  },
+  {
     group: 'Open or export — nothing is changed',
     note: 'these run straight away',
     items: ['Show me PV06', 'Add a product', 'Add PV23 to this catalogue', 'Download PDF', 'Download all as PDF'],
@@ -178,7 +183,7 @@ export function parseCommand(text, items = [], category = null, findings = [], c
   // --- "fix this catalogue" --------------------------------------------------
   // Too vague to act on, but not too vague to help with: the check says what is
   // actually wrong, and each finding carries its own fix.
-  if (/\bfix\b|\bclean\b|\btidy\b|\bsort out\b/.test(t)) return { run: { type: 'qc' } }
+  if (!/\b(background|bg)\b/.test(t) && /\bfix\b|\bclean\b|\btidy\b|\bsort out\b/.test(t)) return { run: { type: 'qc' } }
 
   // --- answering the quality check ----------------------------------------
   // "the pv18 and pv18n is correct. mark it" must be understood. A check the admin
@@ -209,6 +214,46 @@ export function parseCommand(text, items = [], category = null, findings = [], c
 
   if (/\b(download|export|save)\b/.test(t) && /\ball\b/.test(t)) return { run: { type: 'exportAll' } }
   if (/\b(download|export|save)\b.*\bpdf\b/.test(t) || /\bdownload\b/.test(t)) return { run: { type: 'export' } }
+
+  // --- remove a product-photo background -----------------------------------
+  // This is deliberately separate from the delete command below. The bot cleans
+  // the existing photo locally, shows the result, and still waits for Apply before
+  // replacing anything in the catalogue.
+  if (/\b(background|bg)\b/.test(t) &&
+      /\b(remove|clean|clear|delete)\b/.test(t)) {
+    const p = findProduct(t, items)
+    if (!p) {
+      const asked = nameLike(text)
+      return { reply: asked
+        ? `I cannot find ${asked}, so there is no product photo to clean.`
+        : 'Tell me which product, for example "remove the background from PW07".' }
+    }
+    if (p.isPage) return { reply: `${p.name} is a kept page, not a product photo. I will not alter the page image.` }
+    const targets = category ? photoTargets(category, p) : []
+    if (!targets.length) return { reply: `${p.name} has no product photo field I can clean.` }
+    const target = targets.length === 1
+      ? targets[0]
+      : targets.find(tg => tg.match && t.includes(norm(tg.match)))
+    if (!target) {
+      return { reply: `${p.name} has more than one product photo — ${targets.map(tg => tg.label).join(', ')}. ` +
+        `Say which one, for example "remove the background from ${p.name} ${targets[0].match ?? ''}".` }
+    }
+    const source = target.targetItemId
+      ? (p[target.targetKey] ?? []).find(it => it.id === target.targetItemId)?.photo
+      : p[target.targetKey]
+    if (!source) return { reply: `${p.name}${target.match ? ` — ${target.match}` : ''} has no photo to clean.` }
+    return {
+      propose: {
+        summary: `Remove the background from ${p.name}${target.match ? ` — ${target.match}` : ''}?`,
+        detail: 'I will process this photo locally. Light backgrounds stay unchanged, and the product frame is not cropped. Nothing changes until you click Apply.',
+        preview: source,
+        action: {
+          type: 'removeBackground', ids: [p.id], label: p.name,
+          targetKey: target.targetKey, targetItemId: target.targetItemId, value: source,
+        },
+      },
+    }
+  }
 
   // "add a product" and "add PV23 to this catalogue" mean the same thing — a
   // code named directly is just as clear an instruction as the word "product".

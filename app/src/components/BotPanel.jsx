@@ -171,7 +171,30 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     const activeAttachment = attachment ? (attachment.useClean && attachment.clean ? attachment.clean : attachment.raw) : null
     const cmd = parseCommand(text, items, category, findings, catalogues, activeAttachment)
     if (cmd?.reply) { say({ who: 'bot', source: 'local', text: cmd.reply }); return }
-    if (cmd?.propose) { say({ who: 'bot', source: 'local', text: '', propose: cmd.propose }); return }
+    if (cmd?.propose) {
+      if (cmd.propose.action?.type === 'removeBackground') {
+        setBusy(true)
+        try {
+          const result = await processBackground(cmd.propose.action.value)
+          const cleaned = result.dataUrl
+          say({ who: 'bot', source: 'local', text: '', propose: {
+            ...cmd.propose,
+            preview: cleaned,
+            detail: result.skipped
+              ? 'The background is already light, so I kept the original photo. Nothing changes until you click Apply.'
+              : 'The dark background was removed locally. The product frame was kept intact. Nothing changes until you click Apply.',
+            action: { ...cmd.propose.action, value: cleaned },
+          } })
+        } catch (e) {
+          say({ who: 'bot', source: 'local', text: `I could not remove that background: ${e.message}. The catalogue was not changed.` })
+        } finally {
+          setBusy(false)
+        }
+      } else {
+        say({ who: 'bot', source: 'local', text: '', propose: cmd.propose })
+      }
+      return
+    }
     if (cmd?.run) { runSafe(cmd.run); return }
 
     // 2. Answerable from the data alone? Never leaves the browser.

@@ -560,7 +560,7 @@ export default function App() {
               setProducts(prev => prev.map(p => (act.ids.includes(p.id) ? { ...p, name: act.value } : p)))
             } else if (act.type === 'move') {
               move(act.ids[0], act.value)
-            } else if (act.type === 'replacePhoto') {
+            } else if (act.type === 'replacePhoto' || act.type === 'removeBackground') {
               setProducts(prev => prev.map(p => {
                 if (!act.ids.includes(p.id)) return p
                 if (act.targetItemId) {
