@@ -79,7 +79,19 @@ export function defaultCategoryFor(parent, chrome = null) {
           pages.push({ index: pages.length + 1, plate: item, rows: [], blocks: [] })
           continue                                      // …then the page, on its own
         }
-        cell.push({ ...item, slot: ++slot })
+        const product = { ...item, slot: ++slot }
+        // A dimension drawing needs real width beside its product photo. Do not
+        // squeeze that pair into a four-column grid: finish the current grid row,
+        // then give this product the whole row so both source rectangles stay clear.
+        if (product.drawing) {
+          flushRow()
+          rows.push([product])
+          if (rows.length === rowsPerPage) {
+            pages.push({ index: pages.length + 1, rows: rows.splice(0, rowsPerPage), blocks: [] })
+          }
+          continue
+        }
+        cell.push(product)
         if (cell.length === COLUMNS) flushRow()
         if (rows.length === rowsPerPage) {
           pages.push({ index: pages.length + 1, rows: rows.splice(0, rowsPerPage), blocks: [] })

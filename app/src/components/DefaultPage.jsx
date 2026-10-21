@@ -74,12 +74,13 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
 
       <div className="dp-flow" style={{ top: `${flowTop}mm` }}>
         {page.rows.map((row, i) => (
-          <div className="dp-row" key={i}
-               style={{ gridTemplateColumns: `repeat(${columns}, 1fr)`, height: `${rowH}mm` }}>
+          <div className={`dp-row ${row.length === 1 && row[0].drawing ? 'dp-row--single' : ''}`} key={i}
+               style={{ gridTemplateColumns: row.length === 1 && row[0].drawing ? '1fr' : `repeat(${columns}, 1fr)`, height: `${rowH}mm` }}>
             {row.map(p => (
               <Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} />
             ))}
-            {Array.from({ length: columns - row.length }).map((_, k) => <div key={`s${k}`} />)}
+            {!(row.length === 1 && row[0].drawing) &&
+              Array.from({ length: columns - row.length }).map((_, k) => <div key={`s${k}`} />)}
           </div>
         ))}
       </div>
