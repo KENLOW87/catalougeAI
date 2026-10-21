@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   readImage, toBuffer, toJpeg, crop, whitenBackground, keepInk,
-  trimToContent, keepLargestBlob, snapBox,
+  trimToContent, keepLargestBlob, snapBox, flattenDarkBackground,
 } from './imageops.mjs'
 import { readWithRules, ruleReadIsUsable, describeReport } from './readers/index.mjs'
 import { findAnchors } from './readers/spec.mjs'
@@ -226,6 +226,17 @@ export function cutSourceAsset(page, box) {
 }
 
 /**
+ * Source photo cut used by automatic PDF ingest. It removes a clearly dark,
+ * flat background, but never trims the product silhouette or changes a light
+ * photo. The source rectangle therefore stays the same size as the PDF field.
+ */
+function cutSourcePhotoAsset(page, box) {
+  const snapped = snapBox(page, box)
+  const img = crop(page, snapped.x, snapped.y, snapped.w, snapped.h)
+  return `data:image/png;base64,${toBuffer(flattenDarkBackground(img)).toString('base64')}`
+}
+
+/**
  * Prefer the original embedded PDF image for a locally-read product photo.
  * The reader measured its field in the 400-DPI page, while Poppler reports
  * native image coordinates in its own XML page units, so the matcher handles
@@ -234,7 +245,21 @@ export function cutSourceAsset(page, box) {
  */
 function nativePhoto(nativePage, assetPage, box) {
   const image = matchNativePdfImage(nativePage, box, assetPage)
-  return image?.data ?? null
+  if (!image?.data) return null
+  // Embedded PNG/JPEG photos can bypass the rendered-page crop, so apply the
+  // same conservative dark-background pass to them. Never trim or touch light
+  // photography, and leave formats we cannot decode unchanged.
+  const match = image.data.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/)
+  if (!match) return image.data
+  try {
+    const source = readImage(Buffer.from(match[2], 'base64'))
+    const cleaned = flattenDarkBackground(source)
+    return cleaned === source
+      ? image.data
+      : `data:image/png;base64,${toBuffer(cleaned).toString('base64')}`
+  } catch {
+    return image.data
+  }
 }
 
 function preferNativePhotos(product, nativePage, assetPage, preserveRendered = false) {
@@ -249,7 +274,7 @@ function preferNativePhotos(product, nativePage, assetPage, preserveRendered = f
   // photo with its original background and performs no content trimming.
   if (preserveRendered) {
     const rendered = box => box
-      ? cutSourceAsset(assetPage, {
+      ? cutSourcePhotoAsset(assetPage, {
           x: box.x / assetPage.width,
           y: box.y / assetPage.height,
           w: box.w / assetPage.width,
@@ -392,7 +417,7 @@ function extractDetailPhotos(page) {
   // (a wood-grain background, a dot pattern), not a gallery of real photos.
   return blocks.slice(0, 12).map(b => {
     try {
-      return cutSourceAsset(page, { x: b.x / page.width, y: b.y / page.height, w: b.w / page.width, h: b.h / page.height })
+      return cutSourcePhotoAsset(page, { x: b.x / page.width, y: b.y / page.height, w: b.w / page.width, h: b.h / page.height })
     } catch { return null }
   }).filter(Boolean)
 }
@@ -747,7 +772,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
             let photo = null
             try {
               photo = preferNativeAiPhoto(nativePage, assetPage, f.photo_box) ??
-                (f.photo_box ? cutSourceAsset(assetPage, f.photo_box) : null)
+                (f.photo_box ? cutSourcePhotoAsset(assetPage, f.photo_box) : null)
             } catch {}
             return {
               id: `${draft.id}f${k}`,
@@ -760,7 +785,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         } else {
           try {
             if (p.photo_box) draft.photo = preferNativeAiPhoto(nativePage, assetPage, p.photo_box) ??
-              cutSourceAsset(assetPage, p.photo_box)
+              cutSourcePhotoAsset(assetPage, p.photo_box)
           } catch { warnings.push(`${draft.name || 'A product'}: could not cut the product photo.`) }
         }
 

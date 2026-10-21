@@ -105,6 +105,17 @@ export function whitenBackground(img, { tol = 30, agreement = 0.6, forced = null
 }
 
 /**
+ * Removes only a clearly dark, flat photo background by turning it white while
+ * preserving the complete source frame. Light/irregular backgrounds are returned
+ * byte-for-byte as the original object so a bright product such as SW01 is never
+ * damaged by an automatic cutout.
+ */
+export function flattenDarkBackground(img, options = {}) {
+  const result = whitenBackground(img, { tol: 30, agreement: 0.5, ...options })
+  return !result.light && result.changed ? result.img : img
+}
+
+/**
  * Keeps only the ink in line art. Dimension drawings sit on a subtly graded tint,
  * so matching a background colour fails; thresholding on luminance does not.
  * The cut must sit BELOW the tint's luminance (the tint is around 200).
