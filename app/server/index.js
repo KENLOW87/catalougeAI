@@ -264,7 +264,7 @@ app.post('/api/image/edit', async (req, res) => {
 
 app.get('/api/ingest/status', (_req, res) => res.json({
   ready: true,
-  automaticPhotoTreatment: true,
+  automaticPhotoTreatment: false,
   photoTreatmentReady: Boolean(process.env.OPENAI_API_KEY),
   originalDrawingsPreserved: true,
   measurementReading: true,

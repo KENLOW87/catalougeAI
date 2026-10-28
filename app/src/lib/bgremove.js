@@ -12,7 +12,6 @@
 // full-precision file WebGPU auto-selection could otherwise reach for.
 
 import { pipeline } from '@huggingface/transformers'
-import { prepareProductPhoto } from './product-photo.js'
 
 const MODEL = 'onnx-community/ormbg-ONNX'
 
@@ -72,12 +71,12 @@ const hasLightBackground = async dataUrl => {
 /**
  * Returns the processed image plus whether the original was intentionally kept.
  * Keeping this separate from removeBackground preserves the old data-URL API for
- * any callers outside the current UI.
+ * any callers outside the current UI. Runs entirely in the browser — no API key,
+ * no per-photo cost, so it is safe to call automatically or in bulk.
  */
-export async function processBackground(dataUrl, { force = false, jobId } = {}) {
-  // All product colours require isolation, including white products on pale
-  // backgrounds. Drawings must never be passed to this photo-only function.
-  return prepareProductPhoto(dataUrl, { jobId })
+export async function processBackground(dataUrl, { force = false } = {}) {
+  if (!force && await hasLightBackground(dataUrl)) return { dataUrl, skipped: true }
+  return { dataUrl: await removeBackground(dataUrl), skipped: false }
 }
 
 export async function adjustPhoto(dataUrl, operation, angle = 90) {

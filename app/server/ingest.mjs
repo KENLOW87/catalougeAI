@@ -23,7 +23,6 @@ import { readWithRules, ruleReadIsUsable, describeReport } from './readers/index
 import { findAnchors } from './readers/spec.mjs'
 import { BUILTIN_SPECS } from './readers/specs.mjs'
 import { extractNativePdfImages, matchNativePdfImage } from './native-pdf-images.mjs'
-import { prepareImportPhotos } from './prepare-import-photos.mjs'
 import { readProductDimensions } from './read-dimensions.mjs'
 import { findProductExamples, attachProductExamples, validSourceBox, coversPrimaryPhoto } from './product-examples.mjs'
 import { validateImportedAssociations } from './image-association.mjs'
@@ -918,8 +917,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     }}))
     if(shouldStop())throw new IngestCancelled()
     warnings.push(...await readProductDimensions(products, { onProgress, shouldStop }))
-    const photoTreatment = await prepareImportPhotos(products, { onProgress, shouldStop })
-    warnings.push(...photoTreatment.warnings)
+    // Photo background cleanup is a paid AI call per photo — it must never run
+    // automatically during import. It stays a separate, explicit step the admin
+    // (or the assistant, on request) triggers after reviewing the extracted photos.
+    const photoTreatment = { processed: 0, preserved: 0, failed: 0, total: 0, warnings: [] }
     onProgress('Done.')
     return { products, pages: count, warnings, chrome, routing, photoTreatment }
   } finally {
