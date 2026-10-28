@@ -1,6 +1,100 @@
 # GEOMETRA Catalogue AI — Handoff State
 
-Last saved: 25 September 2026
+Last saved: 28 October 2026 (Asia/Kuala_Lumpur)
+
+## Latest handoff — read before the historical notes below
+
+The user is continuing in Claude and has asked to save everything. No new feature
+or redesign is pending. Preserve the working state; wait for the user's next task.
+Read **AGENTS.md in full** before making changes. Its current requirements override
+older design suggestions in this file, README.md or FLOWS.md. The working tree
+contains extensive existing, uncommitted work; do not reset, clean or discard it.
+All implementation and documentation changes are saved on disk; this is not a
+claim that they have been committed to Git.
+
+### Latest fix: destination-neutral Upload file
+
+- The global dashboard Upload file used to open the remembered Wainscoting
+  catalogue and pass its category into a new upload. This is fixed.
+- `app/src/App.jsx` stores `importCategoryId` separately from the active viewer
+  category. Opening/cancelling upload preserves the dashboard and active category.
+  A card's upload explicitly targets that card; generic/bot uploads are neutral.
+- `app/src/components/IngestDialog.jsx` sends an `into` category only when
+  `targetChosen` is true. Unknown general uploads offer a new catalogue during
+  review; confident source recognition still supplies a suggestion. Apply opens
+  the imported catalogue. No catalogue renderer, layout or pagination was changed.
+- Browser checks passed: `test-upload-destination.mjs`, `test-view-reload.mjs`,
+  `test-association-review-ui.mjs`, `test-activity-browser.mjs`. Final build passed.
+  These checks used mock uploads/providers, no paid AI calls and no PDF exports.
+
+### Latest feature: durable activity and OpenAI cost monitoring
+
+- Dashboard → **Aktiviti & Kos** opens a separate monitoring panel. Every new
+  PDF/image upload and bot instruction is recorded, including local/free actions.
+- Server implementation: `app/server/activity.mjs`, installed by `server/index.js`.
+  AsyncLocalStorage links nested OpenAI text/vision/image fetches to the root job.
+  API: `GET /api/activity?date=YYYY-MM-DD&includeTests=0` and
+  `POST /api/activity/events`. CORS permits the activity job/origin headers.
+- Durable append-only ledger: ignored `app/data/activity/YYYY-MM-DD.jsonl`.
+  Keep these files when deploying/backing up the app. They are not in Git.
+- Browser metadata outbox: `catalogue-activity-outbox-v1` in localStorage, with
+  idempotent retries after connectivity returns/reload. Catalogue content remains
+  in IndexedDB. Never clear either store as part of routine debugging.
+- Costs are versioned standard USD estimates based on returned token usage for
+  GPT-4o and GPT-image-1.5. Unknown models, missing usage/modality details and
+  uncertain failed/cancelled costs stay unknown, not zero. No historical spending
+  was fabricated. Other providers' costs are not included in OpenAI totals.
+- Ledger stores bounded, redacted metadata and numeric usage, not image/PDF
+  payloads, keys or complete provider responses. Automated browser activity is
+  labelled test and excluded from the default user report.
+- `test-activity.mjs` verifies persistence/restart, concurrent attribution,
+  text+image costs on the same job, missing usage, deduplication, secret/payload
+  exclusion and Malaysian day boundaries. `test-activity-browser.mjs` verifies
+  actual uploads, free/AI bot paths, monitor filters and offline/reload recovery
+  using an isolated mock provider and ledger. Both passed.
+- A daily **17:30 Asia/Kuala_Lumpur** reminder is already active in the Codex chat:
+  automation ID `semak-penggunaan-katalog-harian`. This is an app automation, not
+  a scheduler inside this repository. Do not create a duplicate in Claude. It
+  reads the local report if available, otherwise reminds the user to open it.
+
+### Preserve the accepted catalogue and chatbot behaviour
+
+- Four ordinary products per row; original WB source rows and complete source
+  support bands; shared WB06/CW02/CW03 strip stays together. Full drawings and
+  measurements, approved technical pairs and M04/M05 folding galleries stay intact.
+- Product/display images remain appropriately beside each other, contained and
+  readable. Keep fitted one/two-page reader navigation, reload position and existing
+  page counts. Never redesign layout while fixing command handling or monitoring.
+- Display/installed images preserve original rectangular scenes and backgrounds.
+  Standalone product isolation preserves orientation: no implicit rotation, tilt,
+  straightening or restaging. Drawings/full pages are not sent for photo isolation.
+- Bot uses shared typed capability/intent resolution with conversation context,
+  validated targets, previews and explicit Apply. General instructions are not
+  meant to be patched one sentence at a time. Existing image-page moves respect
+  requested page numbers; display ownership and source associations must survive.
+- Approved-source browser audit passed for 32 source products / 14 fixture pages:
+  four-column ordinary rows, complete technical references, WB bands, galleries,
+  no missing images or overflow. This is a fixture count, not a claim about the
+  user's current edited catalogue. No export or paid AI was used for this audit.
+
+### Runtime and checks
+
+- Workspace: `C:\Users\admin\Desktop\RAIHANA - INTERN WORK\CATALOUGE_AI`.
+  Run commands from `app/`. Editor 5173 and API 5174 were reachable after the fixes.
+- Server: `node --use-system-ca server/index.js`. Keep system certificate support;
+  never disable TLS checks. OpenAI configuration is server-side in ignored
+  `app/.env`; never print, copy into documentation or commit keys.
+- Do not stop unrelated processes. Only restart an identified catalogue API after
+  server changes. Preserve user data and test in isolated browser profiles.
+- Build: `npm run build` (passes; existing large-bundle warning).
+- Run checks relevant to the next change. Some older regression scripts export
+  PDFs or optionally call real models. Do not run those when the user requests no
+  export/no OpenAI usage. Recent checks named above are mocked and safe.
+
+## Historical handoff from 25 September 2026
+
+The remaining notes describe the older system and may be superseded by the
+current implementation and AGENTS.md, especially AI configuration and layout.
 
 `README.md` and `FLOWS.md` were behind this file by one session and have been
 brought level: the dashboard and where each export button lives, whole-category

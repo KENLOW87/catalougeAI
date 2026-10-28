@@ -6,9 +6,9 @@ import { Badge, Hit } from './bits.jsx'
 // "Accessories ~ LED" template: a 6-across grid strip of standard products, with
 // full-width featured blocks flowing after them.
 
-function CellA({ p, editable, onEdit, onDelete }) {
+function CellA({ p, editable, onEdit, onDelete, highlighted }) {
   return (
-    <div className="cellA">
+    <div className={`cellA ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}>
       <Badge n={p.slot} />
       <div className="name">{p.name}</div>
       <div className="colour">{p.colour}</div>
@@ -24,9 +24,9 @@ function CellA({ p, editable, onEdit, onDelete }) {
   )
 }
 
-function BlockB({ p, editable, onEdit, onDelete }) {
+function BlockB({ p, editable, onEdit, onDelete, highlighted }) {
   return (
-    <div className="blockB">
+    <div className={`blockB ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}>
       <Badge n={p.slot} />
       <div className="name">{p.name}</div>
       <div className="colour">{p.colour}</div>
@@ -48,7 +48,7 @@ function BlockB({ p, editable, onEdit, onDelete }) {
   )
 }
 
-export default function LedPage({ page, editable, onEdit, onDelete }) {
+export default function LedPage({ page, editable, onEdit, onDelete, highlight = [] }) {
   const first = page.index === 1
   return (
     <div className="cat-page" data-page={page.index}>
@@ -60,14 +60,16 @@ export default function LedPage({ page, editable, onEdit, onDelete }) {
         {page.rows.map((row, i) => (
           <div className="cat-row" key={`r${i}`}>
             {row.map(p => (
-              <CellA key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} />
+              <CellA key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
+                     highlighted={highlight.includes(p.id)} />
             ))}
             {/* keep the grid honest when the last row is short */}
             {Array.from({ length: GRID.columns - row.length }).map((_, k) => <div key={`s${k}`} />)}
           </div>
         ))}
         {page.blocks.map(p => (
-          <BlockB key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} />
+          <BlockB key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
+                  highlighted={highlight.includes(p.id)} />
         ))}
       </div>
     </div>

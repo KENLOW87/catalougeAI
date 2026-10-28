@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import Catalogue from './components/Catalogue.jsx'
+import CatalogueViewer from './components/CatalogueViewer.jsx'
 import ProductDialog from './components/ProductDialog.jsx'
 import IngestDialog from './components/IngestDialog.jsx'
 import BotPanel from './components/BotPanel.jsx'
+import { addDisplayImage, removeDisplayImage, moveDisplayImage } from './lib/display-image.js'
+import { addImagePage } from './lib/image-page.js'
+import { applyImageRemoval } from './lib/image-removal.js'
 import Dashboard from './components/Dashboard.jsx'
 import {
   CATEGORIES, CATEGORY_IDS, DEFAULT_CATEGORY, getCategory,
@@ -10,7 +14,9 @@ import {
 } from './lib/categories/index.js'
 import { defaultCategoryFor } from './lib/categories/default.js'
 import { apiUrl } from './lib/api.js'
-import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory } from './lib/store.js'
+import { repairSourcePlacement } from './lib/repair-source-placement.js'
+import { upsertSeriesProduct } from './lib/product-order.js'
+import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, clearAll } from './lib/store.js'
 
 const parentById = id => PARENTS.find(p => p.id === id)
 
@@ -105,9 +111,16 @@ export default function App() {
   // one. It decides whether an unidentified PDF defaults to that catalogue or to a
   // new one — guessing wrong is how PU Stone ended up inside Acoustic Panel.
   const [targetChosen, setTargetChosen] = useState(false)
+  const [importCategoryId, setImportCategoryId] = useState(null)
   const [botNote, setBotNote] = useState(null)
-  const [showDashboard, setShowDashboard] = useState(true)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showDashboard, setShowDashboard] = useState(() => {
+    if (print) return false
+    try { return sessionStorage.getItem('geometra.view') !== 'catalogue' } catch { return true }
+  })
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (print) return false
+    try { return sessionStorage.getItem('geometra.view') === 'catalogue' } catch { return false }
+  })
 
   // The catalogue canvas owns its zoom. Intercept the browser's usual Ctrl +/-
   // shortcut while the editor is open, and keep Ctrl+mouse-wheel available for
@@ -152,9 +165,21 @@ export default function App() {
   const [hydrated, setHydrated] = useState(print)
 
   useEffect(() => {
+    if (print || !hydrated) return
+    try {
+      sessionStorage.setItem('geometra.view', showDashboard || deletedCategories[categoryId] ? 'dashboard' : 'catalogue')
+    } catch {}
+  }, [print, hydrated, showDashboard, deletedCategories, categoryId])
+
+  useEffect(() => {
     if (print) { setHydrated(true); return }
     let alive = true
-    loadAll().then(({ byCategory: saved, chromeByCategory: chromes, acceptedByCategory: accepted, deletedCategories: deleted, customCategories: custom, moved }) => {
+    loadAll().then(async ({ byCategory: saved, chromeByCategory: chromes, acceptedByCategory: accepted, deletedCategories: deleted, customCategories: custom, moved }) => {
+      if (!alive) return
+      for (const [id,list] of Object.entries(saved)) {
+        const repaired=repairSourcePlacement(list)
+        if (repaired !== list) { await saveCatalogue(id,repaired); saved[id]=repaired }
+      }
       if (!alive) return
       setByCategory(prev => ({ ...prev, ...saved }))
       setChromeByCategory(chromes)
@@ -192,6 +217,8 @@ export default function App() {
       setSidebarOpen(false)
     }
   }, [hydrated, deletedCategories, categoryId, print])
+
+  // The paged reader reveals highlighted products by opening their page.
   const parent = heldParentId
     ? getParent(heldParentId)
     : (parentOfCategory(categoryId) ?? parentById(categoryId) ?? customCategories[categoryId] ?? getParent(DEFAULT_PARENT))
@@ -238,7 +265,21 @@ export default function App() {
     () => catalogueList(byCategory, chromeByCategory, deletedCategories, customCategories).length, [byCategory, chromeByCategory, deletedCategories, customCategories])
 
   const save = p => {
-    setProducts(prev => prev.some(x => x.id === p.id) ? prev.map(x => (x.id === p.id ? p : x)) : [...prev, p])
+    setProducts(prev => {
+      if(category.isDefault)return upsertSeriesProduct(prev,p)
+      if (prev.some(x => x.id === p.id)) return prev.map(x => (x.id === p.id ? p : x))
+      // A brand-new product joins its own code group ("WB09" right after the
+      // last WB*") instead of always landing at the very end. Array order IS
+      // print order, so a blind append scatters a family across the catalogue —
+      // WB09 would print pages away from WB01-08 if anything else followed them.
+      const prefix = String(p.name ?? '').toUpperCase().match(/^([A-Z]+)\d/)?.[1]
+      const lastSamePrefix = prefix &&
+        [...prev].reverse().findIndex(x => String(x.name ?? '').toUpperCase().startsWith(prefix))
+      if (!prefix || lastSamePrefix === -1) return [...prev, p]
+      const next = [...prev]
+      next.splice(prev.length - lastSamePrefix, 0, p)
+      return next
+    })
     setEditing(null)
   }
 
@@ -268,6 +309,41 @@ export default function App() {
       setBusy('')
     } catch (e) {
       setBusy(`Catalogue NOT fully deleted — ${e.message}`)
+    }
+  }
+
+  // Wipe every catalogue in this browser and start clean — e.g. before demoing
+  // to a new company, so nothing from a previous session is still on screen.
+  // Unlike `removeCategory`, nothing is marked deleted: every category stays
+  // visible, just empty, ready for a fresh upload.
+  const resetDemo = async () => {
+    if (!confirm(
+      'Reset ALL catalogues for a new demo?\n\n' +
+      'This clears every product, photo, drawing, imported header and quality-check ' +
+      'answer in EVERY catalogue in this browser — including any catalogue created ' +
+      'from an import. Categories themselves stay, empty, ready for a fresh upload. ' +
+      'This cannot be undone.'
+    )) return
+    setBusy('Resetting…')
+    try {
+      await clearAll()
+      // The two bespoke categories ship with real demo products baked into the
+      // code (`category.seed`) as a fallback for "nothing stored yet" — an
+      // explicit empty record is what suppresses that fallback, the same way
+      // `removeCatalogue` already does for a single category.
+      await Promise.all(CATEGORY_IDS.map(id => saveCatalogue(id, [])))
+      const blank = {}
+      for (const id of CATEGORY_IDS) blank[id] = []
+      setByCategory(blank)
+      setChromeByCategory({})
+      setAcceptedByCategory({})
+      setDeletedCategories({})
+      setCustomCategories({})
+      setShowDashboard(true)
+      setSidebarOpen(false)
+      setBusy('')
+    } catch (e) {
+      setBusy(`Reset failed: ${e.message}`)
     }
   }
 
@@ -353,7 +429,7 @@ export default function App() {
   }
 
   const exportPdf = () => runExport(
-    { products, category: categoryId },
+    { products, category: categoryId, chrome: chromeByCategory[categoryId] ?? null },
     `${category.title.replace(/[^\w]+/g, '-')}.pdf`,
     'Building PDF…',
   )
@@ -458,7 +534,7 @@ export default function App() {
           {ordered.map((p, i) => (
             <li key={p.id} className={highlight.includes(p.id) ? 'flagged' : ''}>
               <span className="n">{i + 1}</span>
-              <span className="nm" title={p.name}>{p.name}</span>
+              <button className="nm" title={`Show ${p.name}`} onClick={() => setHighlight([p.id])}>{p.name}</button>
               <span className="tag">{category.kindLabel(p)}</span>
               <span className="mv">
                 <button onClick={() => move(p.id, -1)} title="Move up">↑</button>
@@ -488,7 +564,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={`canvas ${sidebarOpen ? '' : 'canvas--full'}`} onWheel={zoomWithWheel}>
+      <main className={`canvas ${!showDashboard && products.length ? 'canvas--reader' : ''} ${sidebarOpen ? '' : 'canvas--full'}`} onWheel={zoomWithWheel}>
         {!sidebarOpen && (
           <button className="side-toggle no-print" onClick={() => setSidebarOpen(true)}>
             Categories
@@ -502,15 +578,14 @@ export default function App() {
             acceptedByCategory={acceptedByCategory}
             deletedCategories={deletedCategories}
             onOpen={id => { setCategoryId(id); setShowDashboard(false); setSidebarOpen(true) }}
-            onImport={(id, explicit = true) => { if (id) setCategoryId(id); setShowDashboard(false); setSidebarOpen(true); setTargetChosen(Boolean(explicit) && Boolean(id)); setIngesting(true) }}
+            onImport={(id, explicit = true) => { setImportCategoryId(explicit && id ? id : null); setTargetChosen(Boolean(explicit) && Boolean(id)); setIngesting(true) }}
             onExportAll={exportAll}
+            onResetAll={resetDemo}
             filledCount={filledCount}
           />
         ) : products.length > 0 ? (
-          <div className="pages" style={{ '--zoom': zoom }}>
-            <Catalogue categoryId={categoryId} category={category} products={products}
-                       editable onEdit={setEditing} onDelete={remove} />
-          </div>
+          <CatalogueViewer category={category} pages={pages} zoom={zoom} onZoomChange={setZoom}
+                           onEdit={setEditing} onDelete={remove} highlight={highlight} />
         ) : (
           <div className="canvas-empty">
             <h2>{parentLabel(parent)}</h2>
@@ -526,13 +601,17 @@ export default function App() {
           and anything that CHANGES the catalogue is proposed and waits for a click.
           The bot is never the thing that decides to delete a product. */}
       <BotPanel
-        items={products}
+        items={category.isDefault ? ordered : products}
         category={category}
         accepted={acceptedByCategory[categoryId] ?? []}
         catalogues={catalogueOptions}
         note={botNote}
         actions={{
-          onReveal: setHighlight,
+          // A finding is always about the catalogue currently open in the bot, so
+          // revealing it never needs to switch category — only to leave the
+          // Dashboard (the usual place "Quality check" is run from) and open the
+          // sidebar, or nothing about this is visible at all.
+          onReveal: ids => { setHighlight(ids); setShowDashboard(false); setSidebarOpen(true) },
           onOpenCatalogue: id => { setCategoryId(id); setShowDashboard(false); setSidebarOpen(true) },
           // Answering a check changes no product, and it is undoable, so it takes
           // effect at once — but it is REMEMBERED, which is the whole point.
@@ -548,19 +627,59 @@ export default function App() {
           }),
           onExport: exportPdf,
           onExportAll: exportAll,
-          onImport: () => { setTargetChosen(false); setIngesting(true) },
+          onImport: () => { setImportCategoryId(null); setTargetChosen(false); setIngesting(true) },
           // The file the assistant was handed goes straight through to review.
           // A code named in chat ("add PV23") is typed into the name field
           // already — the admin still supplies the photo, same as any add.
-          onAddProduct: name => setEditing({ ...category.kinds[0].make(), ...(name ? { name } : {}) }),
+          onAddProduct: (name, photo) => {
+            const startIn = (id, cat) => {
+              const product = { ...cat.kinds[0].make(), ...(name ? { name } : {}) }
+              const field = cat.fields(product).find(f => f.type === 'image' && f.key !== 'drawing')
+              if (photo && field) product[field.key] = photo
+              if (id !== categoryId) { setCategoryId(id); setShowDashboard(false); setSidebarOpen(true) }
+              setEditing(product)
+            }
+
+            // A code's prefix already belongs to a family — "WB" lives in
+            // Wainscoting & Mirror, "PV" in PVC Marble Sheet, and so on. Catch the
+            // common slip of adding one while a DIFFERENT catalogue happens to be
+            // open, rather than silently filing it in the wrong one. This is a
+            // SUGGESTION, exactly like PDF-import routing (see lib/route.js) — it
+            // only ever asks, never moves anything on its own.
+            const prefix = String(name ?? '').toUpperCase().match(/^([A-Z]+)\d/)?.[1]
+            const hasPrefix = (id) => (byCategory[id] ?? []).some(p => String(p.name ?? '').toUpperCase().startsWith(prefix))
+            if (prefix && !hasPrefix(categoryId)) {
+              const elseId = Object.keys(byCategory).find(id => id !== categoryId && !deletedCategories[id] && hasPrefix(id))
+              if (elseId) {
+                const elseTitle = CATEGORIES[elseId]?.title ?? parentById(elseId)?.title ?? customCategories[elseId]?.title ?? elseId
+                if (confirm(`${prefix}-prefixed products are usually in ${elseTitle}, not ${category.title}. Add ${name} there instead?`)) {
+                  startIn(elseId, resolveCategory(elseId, chromeByCategory[elseId], customCategories))
+                  return
+                }
+              }
+            }
+            startIn(categoryId, category)
+          },
           onApply: act => {
-            if (act.type === 'delete') {
+            if (['removeImagePage', 'clearProductPhoto'].includes(act.type)) {
+              setProducts(prev => applyImageRemoval(prev, act))
+            } else if (['addImagePage', 'positionImagePage'].includes(act.type)) {
+              setProducts(prev => addImagePage(prev, act))
+              setHighlight([act.pageId])
+              setShowDashboard(false)
+            } else if (act.type === 'addDisplayImage') {
+              setProducts(prev => addDisplayImage(prev, act))
+            } else if (act.type === 'removeDisplayImage') {
+              setProducts(prev => removeDisplayImage(prev, act))
+            } else if (act.type === 'moveDisplayImage') {
+              setProducts(prev => moveDisplayImage(prev, act))
+            } else if (act.type === 'delete') {
               setProducts(prev => prev.filter(p => !act.ids.includes(p.id)))
             } else if (act.type === 'rename') {
               setProducts(prev => prev.map(p => (act.ids.includes(p.id) ? { ...p, name: act.value } : p)))
             } else if (act.type === 'move') {
               move(act.ids[0], act.value)
-            } else if (act.type === 'replacePhoto' || act.type === 'removeBackground') {
+            } else if (['replacePhoto', 'removeBackground', 'adjustPhoto'].includes(act.type)) {
               setProducts(prev => prev.map(p => {
                 if (!act.ids.includes(p.id)) return p
                 if (act.targetItemId) {
@@ -577,7 +696,7 @@ export default function App() {
       {ingesting && (
         <IngestDialog
           existingByCategory={byCategory}
-          intoCategory={categoryId}
+          intoCategory={importCategoryId}
           catalogues={catalogueOptions}
           targetChosen={targetChosen}
           onCancel={() => {
@@ -586,6 +705,8 @@ export default function App() {
           }}
           onCommit={(byCat, chrome, created) => {
             applyImported(byCat, chrome, created)
+            setShowDashboard(false)
+            setSidebarOpen(true)
             setIngesting(false)
             setBotNote(summariseImport(byCat))
           }}

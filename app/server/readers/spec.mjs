@@ -9,7 +9,7 @@
 // spec is resolution-independent: measured on a 200 DPI preview, applied to a 400
 // DPI render.
 
-import { crop, trimToContent, keepInk, toBuffer, inkFromBright } from '../imageops.mjs'
+import { crop, toBuffer, inkFromBright } from '../imageops.mjs'
 import { splitStrip } from '../split-strip.mjs'
 import { ocr, ocrLabel } from '../ocr.mjs'
 import { snapTo, repairSize, repairLength, repairLengthParen, repairFirstMm, repairCode, snapCode, trimBleed, FINISHES } from './vocab.mjs'
@@ -113,6 +113,7 @@ export function findBlockAnchors(page, anchor) {
     b.area / (b.w * b.h) >= minFill)
 
   if (!blocks.length) return []
+  if (anchor.realOnly) return blocks.map(b => ({ x: b.minX, y: b.minY, w: b.w, h: b.h, block: true, bandCount: 1 }))
 
   // Find the page's PITCH — the repeating cell size most blocks agree on. A page
   // can mix the ordinary cell width with a "hero" cell spanning two or more columns
@@ -378,10 +379,8 @@ export function findAnchors(page, anchor) {
 
 // Product photos are source material, not silhouettes to be cleaned. Keep the
 // exact field crop and all of its pixels; only the catalogue CSS decides how it
-// fits the product card. Drawings still use cleanLineart below.
+// fits the product card. Final product isolation happens once after PDF reading.
 const cleanPhoto = img => img
-// `inkCut` differs per layout: LED drawings are black (185), PVC's are gold (210).
-const cleanLineart = (img, cut) => trimToContent(keepInk(img, cut), { gap: 60, pad: 6 })
 
 // Product codes deserve a second, stricter OCR pass. A normal text whitelist lets
 // Tesseract choose lowercase l/O/S and punctuation, which is exactly where short
@@ -543,6 +542,7 @@ export async function readWithSpec(page, spec) {
    * digits, glued onto the end of a perfectly good read.
    */
   const boxAt = (a, box, field) => {
+    if(field?.absolute)return {x:px(box.x),y:px(box.y),w:px(box.w),h:px(box.h)}
     const fromBottom = field?.from === 'blockBottom' && a.block
     const originY = fromBottom ? a.y + a.h : a.y
     const w = (box.w === 0 && a.block) ? a.w - px(box.x) : px(box.w)
@@ -569,7 +569,11 @@ export async function readWithSpec(page, spec) {
   // keep whichever one actually worked, instead of a single spec only ever being
   // able to describe one shape of product.
   const readKind = async (a, kind, anchorIndex) => {
-    const product = { _spec: spec.id, _kind: kind.id }
+    const product = { _spec: spec.id, _kind: kind.id,
+      __sourceAnchor:{x:a.x/page.width,y:a.y/page.height},
+      ...(kind.layoutPairGroup?{layoutPairGroup:kind.layoutPairGroup}:{}),
+      ...(kind.layoutFullRow?{layoutFullRow:true}:{}),
+      ...(kind.layoutRowGroup?{layoutRowGroup:kind.layoutRowGroup}:{}) }
     const attemptWarnings = []
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.
@@ -730,6 +734,7 @@ export async function readWithSpec(page, spec) {
         // whole anchor is dropped rather than imported as a blank entry to fix later.
         if (f.required && (!value || (f.matches && !f.matches.test(value)))) product.__reject = true
       } else if (f.type === 'photo') {
+        if (f.preserveScene && f.key === 'photo') product.photoTreatmentMode = 'preserve-scene'
         // A card's title can be one line or two, and its total height can vary
         // ("hero" cards spanning extra columns are shorter overall) — a photo box
         // measured at a fixed offset from the top then either starts inside the
@@ -752,7 +757,11 @@ export async function readWithSpec(page, spec) {
           product[f.key] = f.source ? dataUrl(region) : dataUrl(cleanPhoto(region))
         }
       } else if (f.type === 'lineart') {
-        product[f.key] = dataUrl(cleanLineart(region, spec.inkCut ?? 185))
+        if(f.key==='drawing')product.drawingPreserved=true
+        // Preserve every original dimension crop, including pale photographic
+        // references. Ink thresholding erases white relief and faint measurements.
+        product[f.key] = dataUrl(region)
+        rememberSourceBox(product, f.key, b)
       } else if (f.type === 'finishes') {
         const parts = splitStrip(region, { minAreaFrac: 0.012 })
         product.__sourceBoxes ??= {}
@@ -821,6 +830,22 @@ export async function readWithSpec(page, spec) {
             'exception note that confused the label search.')
         }
       }
+    }
+    if(kind.supportStripByAnchor?.[anchorIndex]) {
+      const b=boxAt(a,kind.supportStripByAnchor[anchorIndex],{absolute:true})
+      product.supportStrip=dataUrl(crop(page,b.x,b.y,b.w,b.h))
+      if(kind.supportCaptionByAnchor?.[anchorIndex])product.supportCaption=kind.supportCaptionByAnchor[anchorIndex]
+    }
+    if(kind.examplesByAnchor){
+      product.examples=(kind.examplesByAnchor[anchorIndex]||[]).map(e=>{
+        const b=boxAt(a,e.box,{absolute:true})
+        return {image:dataUrl(crop(page,b.x,b.y,b.w,b.h)),caption:e.caption||'',role:e.role||'usage',
+          ...(e.displayWithProductCode?{displayWithProductCode:e.displayWithProductCode}:{}),
+          ...(e.relatedProductCodes?{relatedProductCodes:e.relatedProductCodes}:{}),
+          associationEvidence:'verified-source-layout',ownerName:product.name,
+          sourceBox:{x:b.x/page.width,y:b.y/page.height,w:b.w/page.width,h:b.h/page.height}}
+      })
+      product.examplesTrusted=true
     }
     if (attemptWarnings.length) product.__warnings = attemptWarnings
     return product

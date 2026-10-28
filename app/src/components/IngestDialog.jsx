@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { TYPE_A, TYPE_B } from '../lib/model.js'
 import { reconcile, applyReconcile } from '../lib/reconcile.js'
 import { apiUrl } from '../lib/api.js'
+import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
 
 // Upload a catalogue PDF -> the AI reads it -> YOU review what it found -> it is added.
 //
@@ -15,6 +16,11 @@ const fileToBase64 = file => new Promise((res, rej) => {
   r.onerror = rej
   r.readAsDataURL(file)
 })
+const referenceLabel = reason => ({
+  'original-product-card':'Gambar produk asal',
+  'dimension-reference':'Rujukan ukuran',
+  'Image ownership could not be confirmed':'Padanan gambar belum dapat disahkan',
+}[reason] || reason)
 
 /** The grouping key used while a brand-new catalogue has no id yet. */
 const NEW = '__new__'
@@ -62,7 +68,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const [chrome, setChrome] = useState(null)   // page header lifted from the PDF
   const [routing, setRouting] = useState(null)
   // Where the generic drafts will go. Suggested by the reading, settled by the admin.
-  const [destination, setDestination] = useState(intoCategory ?? '')
+  const importTarget = targetChosen ? intoCategory : null
+  const [destination, setDestination] = useState(importTarget ?? NEW)
   const [newTitle, setNewTitle] = useState('')
   const creating = destination === NEW
   const fileRef = useRef(null)
@@ -70,6 +77,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   // server to stop: it watches for the connection closing, so an abandoned import
   // stops holding the one OCR worker.
   const abortRef = useRef(null)
+  const activityJob = useRef(null)
 
   useEffect(() => {
     fetch(apiUrl('/api/ingest/status'))
@@ -107,6 +115,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const showResult = result => {
     const found = (result.products ?? []).map(p => ({ ...p, keep: (p.issues ?? []).length === 0 }))
     setDrafts(found)
+    setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length).map(p=>p.id)))
     setWarnings(result.warnings ?? [])
     setChrome(result.chrome ?? null)
     setRouting(result.routing ?? null)
@@ -132,7 +141,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     // selected.  Default only the matched records that actually carry media;
     // the administrator can still untick any individual record in the review.
     setUseDraft(new Set(Object.values(nextPlan).flatMap(p =>
-      p.matched.filter(m => hasMedia(m.draft)).map(m => m.draft.id))))
+      p.matched.filter(m => hasMedia(m.draft) && !m.draft.photoTreatmentErrors?.length && !m.draft.imageAssociationIssues?.length).map(m => m.draft.id))))
     setPhase('review')
   }
 
@@ -154,6 +163,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
 
   const startFile = async file => {
     if (!file) return
+    const jobId = beginActivity(file.type.startsWith('image/') ? 'upload.image' : 'upload.pdf', file.name, { bytes: file.size, category: importTarget })
+    activityJob.current = jobId
 
     setPhase('working')
     setProgress('Uploading…')
@@ -165,12 +176,12 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest'), {
         method: 'POST',
         signal: ctl.signal,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...activityHeaders(jobId) },
         // `into` is the catalogue on screen: where products land when the layout
         // that read them has no category of its own.
         body: isImage
-          ? JSON.stringify({ image: payload.split(',')[1], mime: file.type, into: intoCategory ?? null, filename: file.name })
-          : JSON.stringify({ pdf: payload, into: intoCategory ?? null, filename: file.name, bytes: file.size }),
+          ? JSON.stringify({ image: payload.split(',')[1], mime: file.type, into: importTarget ?? null, filename: file.name })
+          : JSON.stringify({ pdf: payload, into: importTarget ?? null, filename: file.name, bytes: file.size }),
       })
       if (!res.ok) {
         const type = res.headers.get('content-type') ?? ''
@@ -226,7 +237,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       }
     } catch (err) {
       // Cancelling is not an error, and must not be reported as one.
-      if (err?.name === 'AbortError') return
+      if (err?.name === 'AbortError') { activityStatus(jobId, 'cancelled'); return }
+      activityStatus(jobId, 'failed', String(err.message ?? err))
       setError(String(err.message ?? err))
       setPhase('error')
     } finally {
@@ -236,6 +248,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
 
   /** Stop reading and leave. The server sees the connection close and gives up too. */
   const cancelRead = () => {
+    activityStatus(activityJob.current, 'cancelled-or-review-dismissed')
     abortRef.current?.abort()
     abortRef.current = null
     onCancel()
@@ -251,6 +264,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const isGeneric = d => d.categoryId != null && !BUILTIN_CATS.includes(d.categoryId)
 
   const recheck = d => {
+    if(d.imageAssociationIssues?.length)return ['padanan gambar perlu disemak',...d.imageAssociationIssues.map(referenceLabel)]
+    if (d.photoTreatmentErrors?.length) return d.photoTreatmentErrors
     // A page kept whole is never "missing" anything — it IS the page.
     if (d.isPage) return []
     // A drawing is only required where the layout actually has one — a sheet
@@ -275,18 +290,23 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
 
   const upload = async (id, field, file, finishId) => {
     if (!file) return
-    const data = await readImageFile(file)
+    const jobId = recordImageUpload(file, `import-review:${field || 'finish'}`)
+    let data
+    try { data = await readImageFile(file); activityStatus(jobId, 'attached-original') }
+    catch (error) { activityStatus(jobId, 'failed', error.message); throw error }
     setDrafts(ds => ds.map(d => {
       if (d.id !== id) return d
       if (finishId) {
         const key = Array.isArray(d.variants) ? 'variants' : 'finishes'
         return { ...d, [key]: d[key].map(f => (f.id === finishId ? { ...f, photo: data } : f)) }
       }
-      return { ...d, [field]: data }
+      return { ...d, [field]: data,
+        ...(field === 'drawing' ? { drawingPresentation: '', dimensionText: '', dimensionReferenceKind: null } : {}),
+      }
     }))
   }
 
-  const strip = ({ keep, issues, sourcePage, readBy, categoryId, wantsDrawing, _spec, _kind, ...p }) => p
+  const strip = ({ keep, issues, categoryId, wantsDrawing, _spec, _kind, ...p }) => p
 
   const commit = () => {
     // A brand-new catalogue gets its real id here, at the moment it is confirmed.
@@ -301,11 +321,12 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       // Drafts that still have problems cannot go in, whatever was ticked.
       const blockedIds = new Set(drafts.filter(d => recheck(d).length > 0).map(d => d.id))
       const skip = new Set([...skipAdded, ...p.added.filter(d => blockedIds.has(d.id)).map(d => d.id)])
-      const merged = applyReconcile(p, { useDraft, skipAdded: skip, dropMissing })
+      const merged = applyReconcile(p, { useDraft:new Set([...useDraft].filter(id=>!blockedIds.has(id))), skipAdded: skip, dropMissing })
       const key = cat === NEW && created ? created.id : cat
       result[key] = merged.map(strip).map(d => ({ ...d, categoryId: key }))
     }
     onCommit(result, chrome, created)
+    activityStatus(activityJob.current, 'applied', 'Upload review saved')
   }
 
   // Apply is refused while a new catalogue has no name — an unnamed catalogue
@@ -599,7 +620,18 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                       )}
                     </div>
 
+                    {d.dimensionText && <label>Ukuran dibaca daripada sumber
+                      <input value={d.dimensionText} onChange={e => patch(d.id, { dimensionText: e.target.value })} />
+                    </label>}
                     <div className="draft-assets">
+                      {(d.sourceReferences ?? []).map((reference,index)=><figure key={`reference-${index}`}>
+                        <img src={reference.image} alt="Gambar sumber untuk semakan" />
+                        <figcaption>Rujukan sumber: {referenceLabel(reference.reason)}</figcaption>
+                      </figure>)}
+                      {(d.examples ?? []).map((example, index) => <figure key={`example-${index}`}>
+                        <img src={example.image} alt={example.caption || 'Example image'} />
+                        <figcaption>{example.role==='usage'?'Contoh penggunaan':'Gambar tambahan'}: {example.caption || index + 1}</figcaption>
+                      </figure>)}
                       {(isGeneric(d) || (!isPvc(d) && d.type === TYPE_A)) && (
                         <figure>
                           {d.photo ? <img src={d.photo} alt="" /> : <span className="missing">no photo</span>}
@@ -631,12 +663,16 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                       {(isPvc(d) || isGeneric(d)) && d.extra && (
                         <figure>
                           <img src={d.extra} alt="" />
-                          <figcaption>installed</figcaption>
+                          <figcaption>{d.extraRole==='usage'?'Contoh penggunaan':'Gambar tambahan'}</figcaption>
                         </figure>
                       )}
                     </div>
 
                     {issues.length > 0 && <p className="draft-issues">needs: {issues.join(', ')}</p>}
+                    {d.imageAssociationIssues?.length>0 && <button type="button" onClick={()=>{
+                      patch(d.id,{imageAssociationIssues:[]})
+                      setSkipAdded(current=>{const next=new Set(current);next.delete(d.id);return next})
+                    }}>Sahkan produk, kekalkan gambar rujukan</button>}
                   </div>
                 )
               })}

@@ -5,4 +5,8 @@ extract/
 .tmp/
 *.pdf
 *.log
+.env
+.env.*
+!.env.example
 app/__scratch_*.mjs
+app/data/activity/

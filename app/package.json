@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server/index.js",
+    "server": "node --use-system-ca server/index.js",
     "start": "concurrently -k \"npm:server\" \"npm:dev\"",
     "test": "node server/e2e.mjs",
     "test:geometry": "node server/test-ingest-geometry.mjs",

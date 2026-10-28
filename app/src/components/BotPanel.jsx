@@ -1,9 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { runQc, qcSummary } from '../lib/qc.js'
-import { answerLocally, summarise } from '../lib/ask.js'
+import { answerLocally } from '../lib/ask.js'
 import { parseCommand, COMMAND_HELP } from '../lib/commands.js'
 import { apiUrl } from '../lib/api.js'
-import { processBackground, modelReady } from '../lib/bgremove.js'
+import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
+import { processBackground, adjustPhoto } from '../lib/bgremove.js'
+import { isDisplayRequest, isRemoveDisplayRequest } from '../lib/display-image.js'
+import { isDisplayConversation } from '../lib/display-planner.js'
+import { interpreterPayload, resolveInterpretedIntent, resolveCatalogueIntent } from '../lib/bot-interpreter.js'
+import { needsSemanticReview } from '../lib/bot-capabilities.js'
+import { isImageRemovalRequest, recentImageContext, proposeImageRemoval } from '../lib/image-removal.js'
 
 const readFile = file => new Promise((res, rej) => {
   const r = new FileReader()
@@ -44,20 +50,28 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   const [log, setLog] = useState([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  // A photo attached for a "replace this product's photo" command: { raw, clean,
-  // useClean, name }. `clean` arrives once background removal finishes; until
-  // then, or if it fails, `raw` is what a command would use.
+  // Attachments start as originals. Only an explicit edit adds a clean preview;
+  // display-image commands always use raw, even when a clean preview exists.
   const [attachment, setAttachment] = useState(null)
   const [bgBusy, setBgBusy] = useState(false)
   const boxRef = useRef(null)
   const inputRef = useRef(null)
   const fileRef = useRef(null)
+  const lastTarget = useRef(null)
+  const displayContext = useRef(null)
+  useEffect(() => { lastTarget.current = null }, [category?.id])
+  useEffect(() => { displayContext.current = null }, [category?.id])
 
   const findings = useMemo(() => runQc(items, category, accepted), [items, category, accepted])
   const summary = qcSummary(findings)
   const problems = findings.filter(f => f.level !== 'info').length
 
-  const say = entry => setLog(prev => [...prev, entry])
+  const activityJob = useRef(null)
+  const say = entry => {
+    const jobId = Object.hasOwn(entry, 'activityJobId') ? entry.activityJobId : activityJob.current
+    if (entry.who === 'bot' && jobId) activityStatus(jobId, entry.propose ? 'awaiting-apply' : 'answered', entry.propose?.summary || entry.text)
+    setLog(prev => [...prev, { ...entry, activityJobId: jobId }])
+  }
 
   useEffect(() => { boxRef.current?.scrollTo(0, boxRef.current.scrollHeight) }, [log, busy, open, showHelp])
 
@@ -81,6 +95,29 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   // Safe work only: nothing here alters the catalogue's contents.
   const runSafe = act => {
     const call = {
+      preparePhotos: async () => {
+        setBusy(true)
+        const jobs = items.filter(p => !p.isPage).flatMap(p => category.fields(p).flatMap(f => {
+          if (f.type === 'image' && ['photo', 'extra'].includes(f.key) && p[f.key] &&
+              !(f.key === 'photo' && p.photoTreatmentMode === 'preserve-scene')) {
+            return [{ p, value: p[f.key], targetKey: f.key }]
+          }
+          if (f.type === 'list' && f.requireOne === 'photo') return (p[f.key] ?? []).filter(it => it.photo).map(it => ({
+            p, value: it.photo, targetKey: f.key, targetItemId: it.id,
+          }))
+          return []
+        }))
+        say({ who: 'bot', text: `Memproses ${jobs.length} foto produk dengan AI. Drawing dan halaman penuh dikekalkan. Setiap hasil perlu disemak sebelum Apply.` })
+        try {
+          for (const job of jobs) {
+            await presentPropose({ summary: `Asingkan produk — ${job.p.name}`, action: {
+              type: 'removeBackground', ids: [job.p.id], label: job.p.name,
+              value: job.value, targetKey: job.targetKey, targetItemId: job.targetItemId,
+            } }, 'ai')
+            setBusy(true)
+          }
+        } finally { setBusy(false) }
+      },
       qc: () => runCheck(true),
       export: () => { actions.onExport?.(); say({ who: 'bot', source: 'local', text: 'Building the PDF for this catalogue…' }) },
       exportAll: () => { actions.onExportAll?.(); say({ who: 'bot', source: 'local', text: 'Building one PDF with every catalogue that has products…' }) },
@@ -93,7 +130,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
           say({ who: 'bot', source: 'local', text: `Starting ${act.value} — I can only open one at a time, ` +
             `since each needs its own photo. Once it is saved, ask me to add ${act.more.join(', ')}.` })
         }
-        actions.onAddProduct?.(act.value)
+        actions.onAddProduct?.(act.value, act.photo)
         setOpen(false)
       },
       // Uploading has ONE place now: the dashboard. Scattering it across the
@@ -106,51 +143,70 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
       open: () => { actions.onOpenCatalogue?.(act.id); say({ who: "bot", source: "local", text: `Opened ${act.label}.` }) },
       accept: () => {
         actions.onAccept?.(act.key)
+        // The finding was answered, but any earlier qc list still showing in the
+        // chat (the one just answered from, or an older "Quality check" result)
+        // kept listing it — nothing about it looked different after the click.
+        // Strike it from every qc snapshot already in the log, not just future ones.
+        setLog(prev => prev.map(m => (m.qc ? { ...m, qc: m.qc.filter(f => f.key !== act.key) } : m)))
         say({ who: "bot", source: "local", undo: act.key,
           text: `Noted — "${act.label}" is correct. I will not raise it again.` })
+      },
+      // The attachment was never saved anywhere, so discarding it changes
+      // nothing in the catalogue — safe to do at once, no Apply needed.
+      clearAttachment: () => {
+        setAttachment(null)
+        say({ who: 'bot', source: 'local', text: 'Discarded that photo — attach another whenever you are ready.' })
+      },
+      cleanAttachment: async () => {
+        if (!attachment || bgBusy) return
+        setBgBusy(true)
+        try {
+          const result = await processBackground(attachment.raw, { force: true, jobId: activityJob.current })
+          setAttachment(a => a?.raw === attachment.raw ? { ...a, clean: result.dataUrl, useClean: true } : a)
+          say({ who: 'bot', text: 'Latar belakang dibuang. Semak gambar lampiran sebelum guna.' })
+        } catch (e) { say({ who: 'bot', text: `Gagal buang latar: ${e.message}` }) }
+        finally { setBgBusy(false) }
       },
     }[act.type]
     call?.()
   }
 
   const apply = (i, action) => {
-    actions.onApply?.(action)
+    const jobId = log[i]?.activityJobId
+    if (action.type === 'addDisplayImage') action = { ...action, displayId: action.displayId ?? crypto.randomUUID(), addedAt: Date.now() }
+    if (['addDisplayImage', 'moveDisplayImage'].includes(action.type)) displayContext.current = action
+    if (['removeDisplayImage', 'removeImagePage', 'clearProductPhoto'].includes(action.type)) displayContext.current = null
+    if (['addImagePage', 'positionImagePage'].includes(action.type)) displayContext.current = { kind: 'image-page', pageId: action.pageId, ids: [action.pageId], value: action.value }
+    if (['replacePhoto', 'adjustPhoto', 'removeBackground'].includes(action.type)) displayContext.current = { ...action, kind: 'product-photo' }
+    if (action.type === 'discardImageAttachment') setAttachment(null)
+    else if (action.type === 'editAttachment') {
+      setAttachment({ raw: action.value, clean: null, useClean: false, name: 'AI edited product.png' })
+      say({ who: 'bot', text: 'Gambar edit dipilih. Sekarang sebut kod produk untuk ganti atau tambah ke katalog.' })
+    } else actions.onApply?.(action)
+    activityStatus(jobId, 'applied', action.type)
     setLog(prev => prev.map((m, k) => (k === i ? { ...m, done: true } : m)))
     // The attachment has done its job — clear it so the next photo starts clean.
-    if (action.type === 'replacePhoto') setAttachment(null)
+    if (['replacePhoto', 'addDisplayImage', 'addImagePage'].includes(action.type)) setAttachment(null)
+    if (['addImagePage', 'positionImagePage'].includes(action.type)) setOpen(false)
   }
 
-  // A photo picked via the 📎 button. Background removal runs right away, not
-  // on send: seeing the cutout before typing a command is the chance to catch a
-  // bad result and keep the original instead, rather than finding out after
-  // a product's photo has already been proposed for swapping.
+  // Attachment intent is not known until the admin gives an instruction.
+  // Preserve the original; only an explicit cleaning command invokes image AI.
   const pickAttachment = async e => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const raw = await readFile(file)
+    const uploadJob = recordImageUpload(file, 'bot-attachment')
+    let raw
+    try { raw = await readFile(file); activityStatus(uploadJob, 'attached-original') }
+    catch (error) { activityStatus(uploadJob, 'failed', error.message); throw error }
     setAttachment({ raw, clean: null, useClean: false, name: file.name })
-    say({ who: 'you', text: `📎 ${file.name}` })
-    setBgBusy(true)
-    say({ who: 'bot', source: 'local',
-      text: modelReady() ? 'Removing the background…' : 'Loading the background-removal model — this happens once…' })
-    try {
-      const result = await processBackground(raw)
-      const clean = result.dataUrl
-      setAttachment(a => (a && a.raw === raw ? { ...a, clean, useClean: true } : a))
-      say({ who: 'bot', source: 'local', text: result.skipped
-        ? 'The background is already light, so I kept the original photo. Tell me which product this replaces — '
-        : 'Background removed. Tell me which product this replaces — ' +
-        'for example "replace PV07 with this photo".' })
-    } catch (err) {
-      say({ who: 'bot', text: `Could not remove the background: ${err.message}. ` +
-        'I kept the photo as you attached it — tell me which product it replaces and I will use it as is.' })
-    } finally {
-      setBgBusy(false)
-    }
+    say({ who: 'you', activityJobId: uploadJob, text: `📎 ${file.name}` })
+    say({ who: 'bot', activityJobId: null, source: 'local', text: 'Gambar asal dikekalkan, tanpa proses AI. Sebut arahan, contohnya "Tambah gambar display untuk WB07", "Gantikan gambar WB07", atau "Buang background gambar ini".' })
   }
 
   const runCheck = (quiet = false) => {
+    if (!quiet) activityJob.current = beginActivity('bot.command', 'Run a quality check', { category: category.id })
     if (!quiet) say({ who: 'you', text: 'Run a quality check' })
     if (!items.length) { say({ who: 'bot', source: 'local', text: 'This catalogue is empty — nothing to check yet.' }); return }
     if (!findings.length) {
@@ -161,61 +217,163 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
       text: `I checked ${items.length} item(s) and found ${findings.length}:` })
   }
 
+  // Shown for a `propose` result from EITHER path — a command typed in a style
+  // the local parser knows, or one the AI rewrote into that style. `removeBackground`
+  // needs an extra step first: the photo is processed locally so the preview
+  // shown IS what Apply would save, not the untouched original.
+  const presentPropose = async (propose, source) => {
+    if (['addDisplayImage', 'moveDisplayImage', 'removeDisplayImage', 'addImagePage', 'positionImagePage'].includes(propose.action?.type)) {
+      // A refinement replaces the pending display plan; an older placement can
+      // no longer be applied accidentally after the admin changes the instruction.
+      setLog(prev => prev.map(m => !m.done && ['addDisplayImage', 'moveDisplayImage', 'removeDisplayImage', 'addImagePage', 'positionImagePage'].includes(m.propose?.action?.type)
+        ? { ...m, done: true, propose: null, text: 'Cadangan display dikemas kini mengikut arahan terkini.' } : m))
+    }
+    if (propose.action?.ids?.length) lastTarget.current = propose.action
+    if (['removeBackground', 'adjustPhoto'].includes(propose.action?.type)) {
+      setBusy(true)
+      try {
+        const result = propose.action.type === 'adjustPhoto'
+          ? { dataUrl: await adjustPhoto(propose.action.value, propose.action.operation, propose.action.angle) }
+          : await processBackground(propose.action.value, { force: true, jobId: activityJob.current })
+        const cleaned = result.dataUrl
+        say({ who: 'bot', source, text: '', propose: {
+          ...propose,
+          preview: cleaned,
+          detail: result.skipped
+            ? 'The background is already light, so I kept the original photo. Nothing changes until you click Apply.'
+            : propose.action.type === 'removeBackground'
+              ? `Produk sahaja diasingkan. ${result.light ? 'Produk cerah diberi latar gelap supaya jelas.' : 'Latar belakang telus dikekalkan.'} Semak hasil sebelum Apply.`
+              : 'Gambar telah diproses. Semak hasil ini, kemudian klik Apply untuk simpan.',
+          action: { ...propose.action, value: cleaned },
+        } })
+      } catch (e) {
+        say({ who: 'bot', source, text: `I could not remove that background: ${e.message}. The catalogue was not changed.` })
+      } finally {
+        setBusy(false)
+      }
+    } else {
+      say({ who: 'bot', source, text: '', propose })
+    }
+  }
+
   const ask = async question => {
     const text = question.trim()
+    // Upload alone never starts image processing.
     if (!text || busy) return
+    activityJob.current = beginActivity('bot.command', text, { category: category.id })
     setQ(''); setShowHelp(false)
     say({ who: 'you', text })
 
     // 1. A command? Data-changing ones are proposed, never done.
+    displayContext.current ??= recentImageContext(items)
     const activeAttachment = attachment ? (attachment.useClean && attachment.clean ? attachment.clean : attachment.raw) : null
-    const cmd = parseCommand(text, items, category, findings, catalogues, activeAttachment)
-    if (cmd?.reply) { say({ who: 'bot', source: 'local', text: cmd.reply }); return }
-    if (cmd?.propose) {
-      if (cmd.propose.action?.type === 'removeBackground') {
-        setBusy(true)
-        try {
-          const result = await processBackground(cmd.propose.action.value)
-          const cleaned = result.dataUrl
-          say({ who: 'bot', source: 'local', text: '', propose: {
-            ...cmd.propose,
-            preview: cleaned,
-            detail: result.skipped
-              ? 'The background is already light, so I kept the original photo. Nothing changes until you click Apply.'
-              : 'The dark background was removed locally. The product frame was kept intact. Nothing changes until you click Apply.',
-            action: { ...cmd.propose.action, value: cleaned },
-          } })
-        } catch (e) {
-          say({ who: 'bot', source: 'local', text: `I could not remove that background: ${e.message}. The catalogue was not changed.` })
-        } finally {
-          setBusy(false)
-        }
-      } else {
-        say({ who: 'bot', source: 'local', text: '', propose: cmd.propose })
-      }
+    // Object removal must reach the image editor before the product-delete parser.
+    if (activeAttachment && !/\b(jangan|bukan|do not|don't)\b/i.test(text) && !isDisplayRequest(text, true) && /\b(hand|hands|finger|fingers|tangan|jari|retouch|only keep|keep only|kekalkan sahaja|buang orang|remove person)\b/i.test(text)) {
+      await editAttachment(text, activeAttachment)
       return
     }
-    if (cmd?.run) { runSafe(cmd.run); return }
+    const previous = lastTarget.current
+    const hasName = items.some(p => p.name && text.toLowerCase().includes(p.name.toLowerCase()))
+    const contextText = !isImageRemovalRequest(text) && !isDisplayConversation(text, displayContext.current) && !isRemoveDisplayRequest(text) && !(activeAttachment && /\b(background|latar belakang)\b/i.test(text)) && !isDisplayRequest(text, Boolean(activeAttachment)) && !hasName && previous && items.some(p => p.id === previous.ids[0]) &&
+      /\b(it|this|that|dia|ni|ini|tu|itu|gambar|photo|background|cerahkan|gelapkan|rotate|flip)\b/i.test(text)
+      ? `${text} ${previous.label} ${previous.match ?? ''}` : text
+    const cmd = parseCommand(contextText, items, category, findings, catalogues, activeAttachment, attachment?.raw, displayContext.current)
+    const semanticReview = needsSemanticReview(text, cmd)
+    // A local clarification is a hint for the interpreter, not a dead end. The
+    // model receives conversation context and proposes only validated actions.
+    let interpretationReady = true
+    if (cmd?.reply || semanticReview) {
+      setBusy(true)
+      try {
+        const status = await fetch(apiUrl('/api/ai/status')).then(response => response.json())
+        interpretationReady = Boolean(status.ready ?? status.openai)
+      } catch { interpretationReady = false }
+      if (!interpretationReady) { setBusy(false); say({ who: 'bot', source: 'local', text: cmd?.reply ?? 'Arahan ini mempunyai beberapa syarat dan memerlukan tafsiran AI. Sambungan AI belum tersedia; tiada perubahan dibuat.' }); return }
+    }
+    if (!semanticReview && cmd?.propose) { await presentPropose(cmd.propose, 'local'); return }
+    if (!semanticReview && cmd?.run) { runSafe(cmd.run); return }
 
     // 2. Answerable from the data alone? Never leaves the browser.
     const local = answerLocally(text, items, category)
-    if (local) { say({ who: 'bot', ...local }); return }
+    if (local && !semanticReview && !cmd?.reply && !cmd?.needsInterpret) { say({ who: 'bot', ...local }); return }
 
-    // 3. Only now is anything sent anywhere — and only text.
+    // 3. Neither a known command nor a rule-answerable question — only now is
+    // anything sent anywhere, and only text, never the photo itself. The AI's
+    // one job for a command is to rewrite it into the exact phrasing the LOCAL
+    // parser already knows; running that rewrite back through parseCommand means
+    // every safety rule still applies — a destructive command still waits for
+    // Apply, and a product the AI got wrong is simply not found, same as today.
     setBusy(true)
     try {
-      const res = await fetch(apiUrl('/api/ask'), {
+      const res = await fetch(apiUrl('/api/interpret'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text, summary: summarise(items, category) }),
+        headers: { 'Content-Type': 'application/json', ...activityHeaders(activityJob.current) },
+        body: JSON.stringify(interpreterPayload({ text, items, category, log,
+          hasAttachment: Boolean(activeAttachment), findings, context: displayContext.current, localReply: cmd?.reply, catalogues })),
       })
       const data = await res.json()
-      say({ who: 'bot', text: data.error ? `That failed: ${data.error}` : data.text, source: data.source })
+      if (data.error) { say({ who: 'bot', text: `That failed: ${data.error}` }); return }
+
+      if (data.kind === 'catalogue_intent') {
+        const result = resolveCatalogueIntent(data, { items, category, attachment: attachment?.raw, context: displayContext.current, text, catalogues, findings })
+        if (result.propose) await presentPropose(result.propose, 'ai')
+        else if (result.run) runSafe(result.run)
+        else say({ who: 'bot', source: 'ai', text: result.reply ?? 'Nyatakan sasaran atau pilihan yang belum jelas.' })
+        return
+      }
+
+      if (data.kind === 'display_intent') {
+        const planned = resolveInterpretedIntent(data, { items, category, attachment: attachment?.raw, context: displayContext.current, text })
+        if (planned.propose) await presentPropose(planned.propose, 'ai')
+        else say({ who: 'bot', source: 'ai', text: planned.reply ?? 'Produk/siri sasaran belum jelas. Nyatakan sasaran display ini.' })
+        return
+      }
+
+      if (data.kind === 'image_edit') {
+        if (!activeAttachment) { say({ who: 'bot', text: 'Lampirkan gambar yang hendak diedit dahulu.' }); return }
+        await editAttachment(data.text, activeAttachment)
+        return
+      }
+
+      if (data.kind === 'command') {
+        if (isImageRemovalRequest(text)) {
+          const removal = proposeImageRemoval(text, items, category, attachment?.raw, displayContext.current)
+          if (removal.propose) await presentPropose(removal.propose, 'ai')
+          else say({ who: 'bot', source: 'ai', text: removal.reply })
+          return
+        }
+        const rewritten = parseCommand(data.text, items, category, findings, catalogues, activeAttachment, attachment?.raw, displayContext.current)
+        if (rewritten?.reply) { say({ who: 'bot', source: 'ai', text: rewritten.reply }); return }
+        if (rewritten?.propose) { await presentPropose(rewritten.propose, 'ai'); return }
+        if (rewritten?.run) { runSafe(rewritten.run); return }
+        say({ who: 'bot', source: 'ai', text: "I thought I understood that, but it did not match anything I can do — could you say it a different way?" })
+        return
+      }
+      say({ who: 'bot', source: 'ai', text: data.text })
     } catch (e) {
       say({ who: 'bot', text: `Could not reach the server: ${e.message}` })
     } finally {
       setBusy(false)
     }
+  }
+
+  const editAttachment = async (instruction, image) => {
+    setBusy(true)
+    say({ who: 'bot', text: 'AI sedang menyunting gambar. Ini mungkin mengambil beberapa minit…' })
+    try {
+      const response = await fetch(apiUrl('/api/image/edit'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...activityHeaders(activityJob.current) },
+        body: JSON.stringify({ image, instruction }), signal: AbortSignal.timeout(250_000),
+      })
+      const data = await response.json()
+      if (!response.ok || data.error) throw new Error(data.error || 'Image edit failed')
+      say({ who: 'bot', source: 'ai', propose: {
+        summary: 'Hasil edit gambar', preview: data.image,
+        detail: 'Semak bentuk, warna dan bahagian produk yang sebelum ini terlindung. Apply memilih hasil ini sebagai lampiran untuk katalog.',
+        action: { type: 'editAttachment', value: data.image },
+      } })
+    } catch (e) { say({ who: 'bot', text: `Gambar belum diedit: ${e.message}` }) }
+    finally { setBusy(false) }
   }
 
   // Clicking a suggestion FILLS the box rather than firing it, so every command is
@@ -286,10 +444,11 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
                     ) : (
                       <div className="proposal-acts">
                         <button className={m.propose.danger ? 'danger' : 'primary'}
+                                disabled={busy}
                                 onClick={() => apply(i, m.propose.action)}>
                           {m.propose.danger ? 'Yes, delete it' : 'Apply'}
                         </button>
-                        <button onClick={() => setLog(prev => prev.map((x, k) => (k === i ? { ...x, done: true, text: 'Left as it was.' , propose: null } : x)))}>
+                        <button onClick={() => { activityStatus(m.activityJobId, 'not-applied'); setLog(prev => prev.map((x, k) => (k === i ? { ...x, done: true, text: 'Left as it was.' , propose: null } : x))) }}>
                           No, leave it
                         </button>
                       </div>
@@ -329,6 +488,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
                 {m.undo && !m.undone && (
                   <button className="link" onClick={() => {
                     actions.onUnaccept?.(m.undo)
+                    activityStatus(m.activityJobId, 'undone')
                     setLog(prev => prev.map((x, k) => (k === i ? { ...x, undone: true } : x)))
                   }}>undo</button>
                 )}
@@ -339,7 +499,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
               </div>
             ))}
 
-            {busy && <div className="bot-msg bot-msg--bot">Thinking…</div>}
+            {busy && <div className="bot-msg bot-msg--bot bot-thinking" role="status">Sedang memahami arahan…</div>}
           </div>
 
           <div className="bot-tools">
@@ -370,7 +530,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
             </div>
           )}
 
-          <form className="bot-ask" onSubmit={e => { e.preventDefault(); ask(q) }}>
+          <form className="bot-ask" aria-busy={busy} onSubmit={e => { e.preventDefault(); ask(q) }}>
             <input className="bot-photo-input" type="file" accept="image/*" ref={fileRef}
                    style={{ display: 'none' }} onChange={pickAttachment} />
             <button type="button" className="chip" title="Attach a photo" aria-label="Attach a photo"

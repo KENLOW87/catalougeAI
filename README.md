@@ -18,7 +18,35 @@ npm install
 npm start          # editor on :5173, export server on :5174
 ```
 
-Open <http://localhost:5173>. No API key is needed for normal use.
+Open <http://localhost:5173>. Set `OPENAI_API_KEY` in `app/.env` for automatic PDF product-photo preparation.
+
+### Current PDF photo policy
+
+Every PDF import now runs one shared photo-preparation stage after all readers and
+native-image selection, before import review. It applies to every extracted product
+photo across all categories, including finishes, variants, extra photos and exception
+variants. OpenAI isolates the product; white/light products receive a dark neutral
+background, while other products retain transparency. Original photos are retained
+for recovery. Original drawing/measurement crops and kept full pages are unchanged.
+No bot command is needed. Progress is streamed, and failed photos are flagged for
+review instead of silently reported as processed. Imports containing product photos
+require an OpenAI key even when layout/OCR reading is local. Older descriptions below
+of entirely free/no-key PDF imports describe the extraction stage only.
+
+Product views are grouped by identity: folded/rear/backing photos become example
+images under their existing product, without adding product numbers or changing
+finishes. Photo candidates are detected from source pixels, then OpenAI assigns
+candidate IDs to the existing product names. Original source crops are retained.
+Measurement photographs may use one primary product image and a transcribed size
+line after a confident reading; technical sketches stay visible. Conflicting or
+uncertain sizes preserve the original reference for review. The import review and
+product editor expose the read dimensions and example photos.
+
+Installed/showroom photos (including mirrors showing their room and lighting) keep
+their full original rectangular photo instead of a product-shaped cutout. This is
+classified before background processing; HM01 RIGHT/LEFT explicitly preserve their
+source scenes. Existing isolated images can be restored with **Restore original
+rectangular photo** in the product editor when the original backup is available.
 
 ---
 
@@ -752,3 +780,32 @@ npm run test:geometry    # asset cutting, no API key needed
   `src/components/`.
 - **The AI reader path has never run.** No `ANTHROPIC_API_KEY` on this machine, so
   the fallback is untested against real model output. The local readers are proven.
+
+## Activity and OpenAI cost monitoring (28 October 2026)
+
+Open **Aktiviti & Kos** on the dashboard. Select a Malaysian calendar date to see
+every new PDF/image upload and bot instruction, including local actions with no
+OpenAI calls. Expand a job for its status, Apply outcome, provider request ID,
+model, numeric token usage and estimated USD cost. Nested PDF analysis and photo
+edits stay attached to the original upload. Merely attaching a display image is
+recorded separately from a later paid image-edit instruction.
+
+The server keeps append-only records in ignored `app/data/activity/`, surviving
+browser reload and server restart. Pending browser events are retained locally
+and retried when the server returns. No PDF/image payloads, API keys or complete
+provider responses enter the ledger. Automated browser tests are labelled and
+hidden by default; their activity is available through the test filter.
+
+Costs use versioned standard OpenAI token rates, not a flat charge per upload.
+Missing usage, missing modality details and unknown models remain **unknown**,
+including failed/cancelled requests whose final usage is unavailable. Estimates
+are not invoices or a reconstruction of historical dashboard spending. Other
+providers' charges are not included. Reporting uses Asia/Kuala_Lumpur, not UTC.
+
+The daily 17:30 Malaysia reminder is configured in the Codex chat. It reads the
+local activity report when available; otherwise it reminds the user to open the
+monitor. No AI test request or export is needed to view usage.
+
+Verification: `node server/test-activity.mjs` and
+`node server/test-activity-browser.mjs` use isolated mock providers/ledgers and
+make no paid AI requests or PDF exports.

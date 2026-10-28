@@ -3,10 +3,17 @@ import puppeteer from 'puppeteer-core'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { ingestPdf, ingestImage, hasCredentials, hasGeminiCredentials } from './ingest.mjs'
+import { ingestPdf, ingestImage, hasCredentials, hasGeminiCredentials, hasOpenAICredentials } from './ingest.mjs'
 import { BUILTIN_SPECS } from './readers/index.mjs'
+import { editProductImage } from './ai-image.mjs'
+import { loadEnvFile } from 'node:process'
+import { randomUUID } from 'node:crypto'
+import { DISPLAY_INTENT_GUIDANCE, CONVERSATION_GUIDANCE, IMAGE_PAGE_POSITION_GUIDANCE, displayIntentContext, conversationContext } from './display-intent.mjs'
+import { BOT_CAPABILITY_GUIDANCE } from '../src/lib/bot-capabilities.js'
+import { installActivity } from './activity.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+if (existsSync(join(__dirname, '../.env'))) loadEnvFile(join(__dirname, '../.env'))
 const PORT = Number(process.env.PORT ?? 5174)
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173'
 
@@ -22,7 +29,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin ?? ''
   if (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):5173$/.test(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Activity-Job-ID,X-Activity-Origin')
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204)
@@ -30,6 +37,8 @@ app.use((req, res, next) => {
 })
 
 // Use the Chrome already installed on this machine rather than downloading one.
+installActivity(app)
+
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH
   const candidates = [
@@ -42,6 +51,16 @@ function findChrome() {
   return candidates.find(p => p && existsSync(p))
 }
 
+const INTERPRET_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['kind', 'text'],
+  properties: {
+    kind: { type: 'string', enum: ['command', 'answer', 'clarify', 'image_edit', 'display_intent', 'catalogue_intent'] },
+    text: { type: 'string', description: 'The rewritten command, the answer, or the clarifying question.' },
+  },
+}
+
 // ---------------------------------------------------------------- PDF export
 // Point a headless Chrome at the app in print mode so the PDF is rendered by the
 // exact same React components and stylesheet the editor uses. There is no second
@@ -50,9 +69,16 @@ function findChrome() {
 // One catalogue or all of them go down the same path. "Download all" is not a
 // second exporter: it hands the same renderer a LIST of catalogues and prints them
 // in one pass, so a combined PDF cannot differ from the individual ones.
+const exportData = new Map()
+app.get('/api/export-data/:token', (req,res) => {
+  const data=exportData.get(req.params.token)
+  if (!data) return res.sendStatus(404)
+  res.setHeader('Cache-Control','no-store')
+  res.json(data)
+})
 app.post('/api/export', async (req, res) => {
   const catalogues = Array.isArray(req.body?.products)
-    ? [{ category: req.body?.category ?? 'accessories-led', products: req.body.products, chrome: null }]
+    ? [{ category: req.body?.category ?? 'accessories-led', products: req.body.products, chrome: req.body.chrome ?? null }]
     : req.body?.catalogues
   if (!Array.isArray(catalogues) || !catalogues.length) {
     return res.status(400).send('products array, or a non-empty catalogues array, required')
@@ -65,19 +91,36 @@ app.post('/api/export', async (req, res) => {
   if (!exe) return res.status(500).send('No Chrome or Edge found. Set CHROME_PATH.')
 
   let browser
+  const token=randomUUID()
   try {
+    // Recovery copies are not rendered and can contain several full generations
+    // of source images. Keep them in the catalogue, not in the print job.
+    exportData.set(token,catalogues.map(c=>({...c,products:c.products.map(p=>{
+      const {sourcePlacementBackup,sourceCropBackup,...printProduct}=p
+      return printProduct
+    })})))
     browser = await puppeteer.launch({ executablePath: exe, headless: 'new', args: ['--no-sandbox'] })
     const page = await browser.newPage()
 
     // Inject the data before the app boots so it renders straight into print mode.
     // A single catalogue is simply a list of one — there is no separate code path.
-    await page.evaluateOnNewDocument(list => {
-      window.__CATALOGUE_ALL__ = list
-      window.__CATALOGUE_DATA__ = list[0].products
-      window.__CATALOGUE_CATEGORY__ = list[0].category
-    }, catalogues)
+    // Fetch image data locally rather than embedding a huge script in a browser
+    // protocol message, which can close the print target for real catalogues.
+    await page.evaluateOnNewDocument(url => {
+      window.__CATALOGUE_BOOTSTRAP__=fetch(url).then(r=>{
+        if(!r.ok)throw new Error('Print data unavailable')
+        return r.json()
+      }).then(list=>{
+        window.__CATALOGUE_ALL__=list
+        window.__CATALOGUE_DATA__=list[0].products
+        window.__CATALOGUE_CATEGORY__=list[0].category
+      })
+    }, `http://localhost:${PORT}/api/export-data/${token}`)
     await page.goto(`${APP_URL}/?print=1`, { waitUntil: 'networkidle0', timeout: 60_000 })
+    await page.waitForSelector('.cat-page', {timeout:60_000})
 
+    // Wait for the same presentation-only drawing crop used by the editor.
+    await page.waitForFunction(() => !document.querySelector('[data-drawing-pending="true"], [data-examples-pending="true"]'), { timeout: 60_000 })
     // Make sure every image has decoded before printing, or the PDF can come out blank.
     await page.evaluate(async () => {
       const imgs = [...document.images]
@@ -100,6 +143,7 @@ app.post('/api/export', async (req, res) => {
     console.error('[export]', e)
     res.status(500).send(String(e.message ?? e))
   } finally {
+    exportData.delete(token)
     await browser?.close().catch(() => {})
   }
 })
@@ -109,54 +153,125 @@ app.post('/api/export', async (req, res) => {
 // Known layouts are read locally and need no key; only an unrecognised layout
 // falls through to the AI reader.
 // ------------------------------------------------------------------ the bot
-// Only questions the rules could NOT answer arrive here. The client answers
-// counts, gaps, duplicates and lookups itself — instantly, exactly, and for
-// nothing — so the API is spent only on wording and judgement.
+// Only reached when the LOCAL parser (src/lib/commands.js) could not recognise
+// the sentence as either a known command or a rule-answerable question — a plain
+// "delete PV07" or "how many products" never gets here, and costs nothing.
+//
+// Its ONE job for a command is to rewrite what the admin typed into the exact
+// phrasing the local parser already knows, naming a real product copied verbatim
+// from the catalogue data below. That rewrite is sent back through the SAME
+// trusted local parser on the client — so every safety rule still applies
+// exactly as it does to a typed command: nothing is ever changed here, and a
+// destructive command still waits for a click on Apply. This endpoint never
+// acts; it only translates.
 //
 // What arrives is a TEXT summary of the catalogue: names, codes, descriptions,
 // counts. Never the images: they are almost all of a catalogue's bulk, they would
-// cost a great deal to send, and they answer no question that this bot is asked.
-app.post('/api/ask', async (req, res) => {
-  const question = String(req.body?.question ?? '').trim()
-  const summary = String(req.body?.summary ?? '')
-  if (!question) return res.status(400).json({ error: 'question required' })
+// cost a great deal to send, and they are not needed to answer questions or to
+// name which product a sentence means.
+function interpretSystemPrompt(summary, hasAttachment, findingTitles) {
+  return 'Understand ordinary Malay and English catalogue instructions and reply in the user language. Use the entire request and conversation context, including corrections and exclusions. ' +
+    'For catalogue actions return kind "catalogue_intent" with a JSON-encoded typed intent in text following the executable capability registry. ' +
+    'For display/page operations, kind "display_intent" with the documented structured intent is also accepted. Do not reduce instructions to keyword command strings. ' +
+    'Use kind "image_edit" only for an explicit edit to the attached photograph, with the precise editing instruction in text. Display placement/page creation never requires image editing. ' +
+    'Use kind "answer" for a question using only the current catalogue data, and kind "clarify" when a necessary source, target or unsupported requirement cannot be resolved. ' +
+    'Never invent catalogue content or claim that an operation is already completed; only Apply changes the data. ' +
+    'Return only a JSON object {"kind":"catalogue_intent|display_intent|image_edit|answer|clarify","text":"..."}.\n' +
+    (hasAttachment ? 'A photo is currently attached, waiting to be used.\n' : 'No photo is attached right now.\n') +
+    (findingTitles.length ? `Open findings awaiting a decision: ${findingTitles.join(' | ')}\n` : 'No open findings right now.\n') +
+    `\n${summary}`
+}
 
-  if (!hasCredentials()) {
-    return res.json({
-      source: 'none',
-      text: 'I can only answer from the catalogue itself at the moment — counts, missing ' +
-        'photos, duplicates, gaps in the codes, and anything about a particular code. ' +
-        'Questions that need judgement or free wording need an ANTHROPIC_API_KEY set on ' +
-        'the server; without one nothing is sent anywhere and nothing is charged.',
-    })
+async function interpretWithOpenAI(system, text) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: text },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`OpenAI API ${response.status}: ${detail.slice(0, 300)}`)
+  }
+  const body = await response.json()
+  return JSON.parse(body.choices?.[0]?.message?.content ?? '{}')
+}
+
+async function interpretWithAnthropic(system, text) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const client = new Anthropic()
+  const reply = await client.messages.create({
+    model: 'claude-opus-5',
+    max_tokens: 300,
+    system,
+    output_config: { format: { type: 'json_schema', schema: INTERPRET_SCHEMA } },
+    messages: [{ role: 'user', content: text }],
+  })
+  if (reply.stop_reason === 'refusal') return { kind: 'clarify', text: 'I was not able to answer that one — could you say it a different way?' }
+  try {
+    return JSON.parse(reply.content.find(b => b.type === 'text')?.text ?? '{}')
+  } catch {
+    return {}
+  }
+}
+
+app.post('/api/interpret', async (req, res) => {
+  const text = String(req.body?.text ?? '').trim()
+  const summary = String(req.body?.summary ?? '')
+  const hasAttachment = Boolean(req.body?.hasAttachment)
+  const findingTitles = Array.isArray(req.body?.findingTitles) ? req.body.findingTitles.map(String) : []
+  if (!text) return res.status(400).json({ error: 'text required' })
+
+  if (!process.env.OPENAI_API_KEY && !hasCredentials()) {
+    return res.json({ kind: 'clarify', text:
+      'I can only answer from the catalogue itself at the moment — counts, missing photos, ' +
+      'duplicates, gaps in the codes, anything about a particular code, or a command typed the ' +
+      'way "What can I say?" shows. Free wording needs an ANTHROPIC_API_KEY or OPENAI_API_KEY ' +
+      'set on the server; without one nothing is sent anywhere and nothing is charged.' })
   }
 
   try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
-    const client = new Anthropic()
-    const reply = await client.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 1200,
-      system:
-        'You answer questions about a product catalogue for its administrator.\n' +
-        'The catalogue data below is the ONLY source of truth. Never invent a product, ' +
-        'a code, a size or a description that is not in it. If the data does not say, ' +
-        'reply that it does not say.\n' +
-        'Product names and codes are printed exactly as stored — never correct their ' +
-        'spelling or spacing in your answer.\n' +
-        'Be brief and concrete. Prefer naming the products involved over describing them.',
-      messages: [{ role: 'user', content: `${summary}\n\nQuestion: ${question}` }],
-    })
-    const text = reply.content.find(b => b.type === 'text')?.text ?? ''
-    res.json({ source: 'ai', text: text || 'No answer came back.' })
+    const system = interpretSystemPrompt(summary, hasAttachment, findingTitles) + '\n' + DISPLAY_INTENT_GUIDANCE + '\n' + CONVERSATION_GUIDANCE + '\n' + IMAGE_PAGE_POSITION_GUIDANCE + '\n' + BOT_CAPABILITY_GUIDANCE + '\n' + displayIntentContext(req.body?.displayInventory, req.body?.displayContext) + '\n' + conversationContext(req.body)
+    const out = process.env.OPENAI_API_KEY
+      ? await interpretWithOpenAI(system, text)
+      : await interpretWithAnthropic(system, text)
+    res.json(out.kind && out.text ? out : { kind: 'clarify', text: 'I am not sure what you mean — could you say it a different way?' })
   } catch (e) {
-    console.error('[ask]', e)
+    console.error('[interpret]', e)
     res.status(500).json({ error: String(e.message ?? e) })
+  }
+})
+
+app.get('/api/ai/status', (_req, res) => res.json({ openai: Boolean(process.env.OPENAI_API_KEY), ready: Boolean(process.env.OPENAI_API_KEY || hasCredentials()) }))
+app.post('/api/image/edit', async (req, res) => {
+  try {
+    const image = await editProductImage(req.body?.image, req.body?.instruction, { productOnly: req.body?.productOnly === true })
+    res.json({ image })
+  } catch (e) {
+    res.status(400).json({ error: e.message })
   }
 })
 
 app.get('/api/ingest/status', (_req, res) => res.json({
   ready: true,
+  automaticPhotoTreatment: true,
+  photoTreatmentReady: Boolean(process.env.OPENAI_API_KEY),
+  originalDrawingsPreserved: true,
+  measurementReading: true,
+  groupedProductExamples: true,
+  localImageAssociationValidation: true,
+  uncertainImagesRequireReview: true,
+  preserveInstalledScenes: true,
   localReaders: BUILTIN_SPECS.map(l => l.title),
   aiFallback: hasCredentials(),
 }))
@@ -226,11 +341,13 @@ app.post('/api/ingest', async (req, res) => {
     // Abandoning an import is a choice, not a fault. Log it as one line, not as a
     // stack trace that makes a normal action look like a crash.
     if (e?.name === 'IngestCancelled' || gone) {
+      res.locals.activityStatus = 'cancelled'
       console.log(`[ingest] cancelled after ${Math.round((Date.now() - started) / 1000)}s`)
       clearInterval(beat)
       return res.end()
     }
     console.error('[ingest]', e)
+    res.locals.activityStatus = 'failed'
     send({ error: String(e.message ?? e) })
   } finally {
     clearInterval(beat)

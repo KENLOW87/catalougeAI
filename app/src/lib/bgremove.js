@@ -12,6 +12,7 @@
 // full-precision file WebGPU auto-selection could otherwise reach for.
 
 import { pipeline } from '@huggingface/transformers'
+import { prepareProductPhoto } from './product-photo.js'
 
 const MODEL = 'onnx-community/ormbg-ONNX'
 
@@ -73,9 +74,25 @@ const hasLightBackground = async dataUrl => {
  * Keeping this separate from removeBackground preserves the old data-URL API for
  * any callers outside the current UI.
  */
-export async function processBackground(dataUrl) {
-  if (await hasLightBackground(dataUrl)) return { dataUrl, skipped: true }
-  return { dataUrl: await removeBackground(dataUrl), skipped: false }
+export async function processBackground(dataUrl, { force = false, jobId } = {}) {
+  // All product colours require isolation, including white products on pale
+  // backgrounds. Drawings must never be passed to this photo-only function.
+  return prepareProductPhoto(dataUrl, { jobId })
+}
+
+export async function adjustPhoto(dataUrl, operation, angle = 90) {
+  const image = await readImage(dataUrl)
+  const canvas = document.createElement('canvas')
+  const turn = operation === 'rotate' && angle % 180 !== 0
+  canvas.width = turn ? image.height : image.width
+  canvas.height = turn ? image.width : image.height
+  const ctx = canvas.getContext('2d')
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  if (operation === 'rotate') ctx.rotate(angle * Math.PI / 180)
+  if (operation === 'flip') ctx.scale(-1, 1)
+  ctx.filter = ({ brighten: 'brightness(1.15)', darken: 'brightness(0.85)', contrast: 'contrast(1.15)' })[operation] ?? 'none'
+  ctx.drawImage(image, -image.width / 2, -image.height / 2)
+  return canvas.toDataURL('image/png')
 }
 
 /**

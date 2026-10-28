@@ -11,6 +11,11 @@
 // Parsing is done here, in the browser, with no API key. A plain command works for
 // free; only unusual wording needs the AI.
 
+import { isDisplayRequest, resolveDisplaySeries, isRemoveDisplayRequest, proposeDisplayRemoval } from './display-image.js'
+import { inferDisplayIntent, planDisplayIntent } from './display-planner.js'
+import { isImagePageRequest, proposeImagePage } from './image-page.js'
+import { isImageRemovalRequest, proposeImageRemoval, recentImageContext } from './image-removal.js'
+
 const norm = s => String(s ?? '').toLowerCase().trim()
 
 /** The catalogue of everything the bot understands — also drives the help panel. */
@@ -36,9 +41,14 @@ export const COMMAND_HELP = [
     items: ['Replace PV07 with this photo', 'Remove PV07 and replace it with my updated photo'],
   },
   {
+    group: 'Add a display image',
+    note: 'attach the original scene; background stays intact and Apply confirms the product',
+    items: ['Letak display ini dekat WB series', 'Tambah gambar display untuk WB07', 'Buang gambar display yang baru saya masukkan tadi'],
+  },
+  {
     group: 'Clean a product photo',
-    note: 'the bot removes a dark background locally and asks you to confirm',
-    items: ['Remove the background from PV07', 'Clean the background of PV07'],
+    note: 'AI asingkan produk sahaja; produk cerah berlatar gelap, produk lain berlatar telus. Drawing kekal.',
+    items: ['Remove the background from PV07', 'Asingkan semua gambar produk'],
   },
   {
     group: 'Open or export — nothing is changed',
@@ -92,7 +102,7 @@ const matchCatalogue = (t, catalogues) => {
  *
  * `drawing` is excluded: a dimension drawing is never "the photo".
  */
-const photoTargets = (category, p) => {
+export const photoTargets = (category, p) => {
   const targets = []
   for (const f of category.fields(p)) {
     if (f.type === 'image' && f.key !== 'drawing') {
@@ -142,9 +152,84 @@ const near = (a, b) => {
  *   { propose: { summary, detail, action } } — changes data, needs a click
  *   { reply }                     — understood, but cannot be done, and why
  */
-export function parseCommand(text, items = [], category = null, findings = [], catalogues = [], attachment = null) {
+export function parseCommand(text, items = [], category = null, findings = [], catalogues = [], attachment = null, originalAttachment = attachment, displayContext = null) {
+  displayContext ??= recentImageContext(items)
+  if (isImageRemovalRequest(text) && !isRemoveDisplayRequest(text)) return proposeImageRemoval(text, items, category, originalAttachment, displayContext)
+  if (isImagePageRequest(text)) return proposeImagePage(text, items, category, originalAttachment, displayContext)
+  const intent = inferDisplayIntent(text, items, Boolean(originalAttachment), displayContext)
+  if (intent && (['move', 'none'].includes(intent.operation) || intent.source?.ordinal ||
+      intent.placement?.mode !== 'default' || intent.placement?.order !== 'default')) {
+    return planDisplayIntent(intent, { items, category, attachment: originalAttachment, context: displayContext })
+  }
+  if (isRemoveDisplayRequest(text)) return proposeDisplayRemoval(text, items)
+  // Resolve display intent BEFORE background removal, replacement or product
+  // creation: "jangan buang background" must never trigger a paid image edit.
+  const displayIntent = isDisplayRequest(text, Boolean(originalAttachment))
+  if (displayIntent) {
+    if (!category?.isDefault) return { reply: 'Tambah display image melalui chat tersedia untuk katalog dengan template biasa sahaja.' }
+    const codes = allCodesLike(text)
+    if (!codes.length) {
+      const plan = resolveDisplaySeries(text, items)
+      if (plan.reply) return { reply: plan.reply }
+      if (!originalAttachment) return { reply: 'Lampirkan display image dahulu. Gambar asal dan background akan dikekalkan.' }
+      return { propose: {
+        summary: `Tambah display untuk ${plan.family} series`,
+        detail: `Saya padankan dengan ${plan.targets.map(p => p.name).join(', ')}. Gambar dipaparkan sekali dalam ruang display bersama kumpulan ini, selepas barisan produk. Gambar dan background asal kekal. Klik Apply untuk simpan.`,
+        preview: originalAttachment,
+        action: { type: 'addDisplayImage', ids: plan.targets.map(p => p.id), ownerId: plan.owner.id,
+          displayScope: 'series', series: plan.family, label: `${plan.family} series`, value: originalAttachment },
+      } }
+    }
+    const targets = items.filter(p => !p.isPage && [p.code, p.name, nameLike(p.name)].filter(Boolean).some(name => {
+      const escaped = norm(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'i').test(text)
+    }))
+    if (!targets.length || codes.some(code => !targets.some(p => [p.code, p.name].some(name => String(name ?? '').toUpperCase().replace(/\s+/g, '').includes(code))))) {
+      return { reply: 'Nyatakan kod produk yang tepat untuk display image, contohnya "Tambah gambar display untuk WB07".' }
+    }
+    if (targets.some((p, i) => targets.some((other, j) => i !== j && norm(p.code || nameLike(p.name) || p.name) === norm(other.code || nameLike(other.name) || other.name)))) {
+      return { reply: 'Kod itu sepadan dengan lebih daripada satu produk. Bezakan nama/kod produk dahulu supaya display image tidak tersalah padan.' }
+    }
+    if (!originalAttachment) return { reply: 'Lampirkan display image dengan butang 📎 dahulu. Gambar asal dan background akan dikekalkan.' }
+    return { propose: {
+      summary: `Tambah display image — ${targets.map(p => p.name).join(', ')}`,
+      detail: 'Gambar asal penuh dan background dikekalkan. Gambar produk tidak diganti. Paparan mengikut susunan produk/kumpulan sedia ada. Klik Apply untuk simpan.',
+      preview: originalAttachment,
+      action: { type: 'addDisplayImage', ids: targets.map(p => p.id), label: targets.map(p => p.name).join(', '), value: originalAttachment },
+    } }
+  }
+  if (/\b(semua|all)\b/i.test(text) && /\b(gambar|foto|photo|photos|background|latar)\b/i.test(text) &&
+      /\b(asingkan|prepare|remove|buang|clean|bersihkan)\b/i.test(text)) return { run: { type: 'preparePhotos' } }
+  text = String(text).replace(/\b(buang|padam|hapuskan)\b/gi, 'remove')
+    .replace(/\b(latar belakang)\b/gi, 'background')
+    .replace(/\b(gantikan|ganti|tukarkan|tukar)\b/gi, 'replace')
+    .replace(/\b(tambahkan|tambah|masukkan)\b/gi, 'add product')
+    .replace(/\b(gambar|imej)\b/gi, 'photo')
+    .replace(/\b(produk)\b/gi, 'product')
+    .replace(/\b(cerahkan|terangkan)\b/gi, 'brighten')
+    .replace(/\b(gelapkan)\b/gi, 'darken')
+    .replace(/\b(pusingkan|pusing)\b/gi, 'rotate')
+    .replace(/\b(betulkan|baiki)\b/gi, 'fix')
   const t = norm(text)
   if (!t) return null
+
+  const adjustment = /\b(brighten|darken|rotate|flip|contrast|adjust|fix)\b/.test(t) &&
+    (/\b(photo|picture|image)\b/.test(t) || /\b(brighten|darken|rotate|flip|contrast)\b/.test(t))
+  if (adjustment) {
+    const operation = t.match(/\b(brighten|darken|rotate|flip|contrast)\b/)?.[1]
+    if (!operation) return { reply: 'Nak laras apa pada gambar? Contoh: "cerahkan gambar PV07", "rotate PV07 90", atau "flip gambar PV07".' }
+    const p = findProduct(t, items)
+    if (!p || p.isPage) return { reply: 'Nyatakan kod produk yang gambarnya hendak dilaras.' }
+    const targets = category ? photoTargets(category, p) : []
+    const target = targets.length === 1 ? targets[0] : targets.find(tg => tg.match && t.includes(norm(tg.match)))
+    if (!target) return { reply: `Pilih gambar untuk ${p.name}: ${targets.map(tg => tg.label).join(', ')}.` }
+    const value = target.targetItemId ? p[target.targetKey]?.find(it => it.id === target.targetItemId)?.photo : p[target.targetKey]
+    if (!value) return { reply: `${p.name} tiada gambar untuk dilaras.` }
+    const angle = Number(t.match(/\b(90|180|270)\b/)?.[1] ?? 90)
+    return { propose: { summary: `${operation} — ${p.name}`, detail: 'Semak gambar sebelum Apply.', action: {
+      type: 'adjustPhoto', ids: [p.id], label: p.name, ...target, value, operation, angle,
+    } } }
+  }
 
   // --- naming another catalogue ---------------------------------------------
   // "fix accecories cataluge" names a catalogue, possibly misspelt, possibly not
@@ -222,6 +307,7 @@ export function parseCommand(text, items = [], category = null, findings = [], c
   if (/\b(background|bg)\b/.test(t) &&
       /\b(remove|clean|clear|delete)\b/.test(t)) {
     const p = findProduct(t, items)
+    if (!p && attachment && !nameLike(text)) return { run: { type: 'cleanAttachment' } }
     if (!p) {
       const asked = nameLike(text)
       return { reply: asked
@@ -245,7 +331,7 @@ export function parseCommand(text, items = [], category = null, findings = [], c
     return {
       propose: {
         summary: `Remove the background from ${p.name}${target.match ? ` — ${target.match}` : ''}?`,
-        detail: 'I will process this photo locally. Light backgrounds stay unchanged, and the product frame is not cropped. Nothing changes until you click Apply.',
+        detail: 'AI mengasingkan produk sahaja. Produk cerah diberi latar gelap; produk lain berlatar telus. Drawing dikekalkan. Semak sebelum Apply.',
         preview: source,
         action: {
           type: 'removeBackground', ids: [p.id], label: p.name,
@@ -266,11 +352,15 @@ export function parseCommand(text, items = [], category = null, findings = [], c
   // finish") to treat as a creation verb on its own — it still needs
   // "product"/"item" to mean that. "add"/"create" are not used that way
   // anywhere else in normal speech, so a bare code after one of those is enough.
-  const addsByCode = /\b(add|create)\b/.test(t) && (/\b(product|item)\b/.test(t) || nameLike(text))
-  const addsByWord = /\bnew\b/.test(t) && /\b(product|item)\b/.test(t)
+  // Mentioning a previous action ("yang aku masukkan tadi...") is not an
+  // imperative to create another product. Uncertain wording goes to the AI
+  // with conversation context instead of opening an unrelated product dialog.
+  const creationRequest = /^(?:(?:please|tolong|can you|could you|boleh(?:kah)?(?: awak)?|saya (?:nak|mahu)|aku nak|nak|i want(?: you)? to)\s+)*(?:add|create|new)\b/.test(t)
+  const addsByCode = creationRequest && /\b(add|create)\b/.test(t) && (/\b(product|item)\b/.test(t) || nameLike(text))
+  const addsByWord = creationRequest && /\bnew\b/.test(t) && /\b(product|item)\b/.test(t)
   if (addsByCode || addsByWord) {
     const codes = allCodesLike(text)
-    return { run: { type: 'addProduct', value: codes[0] ?? null, more: codes.slice(1) } }
+    return { run: { type: 'addProduct', value: codes[0] ?? null, more: codes.slice(1), photo: attachment } }
   }
   if (/\b(import|upload|read)\b.*\b(pdf|catalogue|catalog)\b/.test(t)) return { run: { type: 'import' } }
 
@@ -320,6 +410,18 @@ export function parseCommand(text, items = [], category = null, findings = [], c
         },
       },
     }
+  }
+
+  // --- discarding an attached photo -----------------------------------------
+  // After attaching a photo, the bot asks which product it replaces. "remove
+  // the hand photo too" or "get rid of this photo" answers THAT question — it
+  // means discard the attachment, not delete a catalogue product, even though
+  // "remove" also matches the delete command below. Only read this way when no
+  // product is actually named: "delete PV07" with a photo still attached must
+  // still delete PV07, not quietly drop the attachment instead.
+  if (attachment && /\b(delete|remove|get rid of|drop|discard|cancel)\b/.test(t) &&
+      /\b(photo|picture|image|attachment)\b/.test(t) && !findProduct(t, items)) {
+    return { run: { type: 'clearAttachment' } }
   }
 
   // --- changes data: always proposed, never done ---------------------------

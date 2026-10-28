@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
+import ActivityPanel from './ActivityPanel.jsx'
 import { CATEGORIES, parentLabel } from '../lib/categories/index.js'
 import { defaultCategoryFor } from '../lib/categories/default.js'
 import { runQc } from '../lib/qc.js'
@@ -6,7 +7,8 @@ import { runQc } from '../lib/qc.js'
 const categoryFor = (id, parent, chrome) =>
   CATEGORIES[id] ?? defaultCategoryFor(parent, chrome)
 
-export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, filledCount }) {
+export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onResetAll, filledCount }) {
+  const [showActivity, setShowActivity] = useState(false)
   const rows = useMemo(() => parents.flatMap(parent => {
     const ids = (parent.children.length ? parent.children : [parent.id]).filter(id => !deletedCategories[id])
     return ids.map(id => {
@@ -42,6 +44,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
 
   return (
     <div className="dashboard">
+      {showActivity && <ActivityPanel onClose={() => setShowActivity(false)} />}
       <div className="dashboard-head">
         <div>
           <p className="dashboard-kicker">GEOMETRA CATALOGUE AI</p>
@@ -49,6 +52,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
           <p>Overview of every product family and catalogue in this browser.</p>
         </div>
         <div className="dashboard-head-actions">
+          <button onClick={() => setShowActivity(true)}>Aktiviti &amp; Kos</button>
           <button onClick={() => onExportAll?.()} disabled={!filledCount}>Download all as PDF{filledCount ? ` — ${filledCount} catalogues` : ''}</button>
           {/* "Add catalogue" names NO destination at all. It used to preselect one —
               first a catalogue that already had products, then the first empty one —
@@ -107,6 +111,16 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
             </div>
           </article>
         ))}
+      </div>
+
+      {/* Separated from the everyday actions above — wiping everything is rare
+          and deliberate, e.g. before demoing this app to a different company. */}
+      <div className="dashboard-danger">
+        <div>
+          <h2>Danger zone</h2>
+          <p>Clears every catalogue in this browser — products, photos, drawings, imported headers and quality-check answers — so it is ready to demo to a different company. Categories stay, empty.</p>
+        </div>
+        <button className="danger" onClick={() => onResetAll?.()}>Reset all catalogues</button>
       </div>
     </div>
   )

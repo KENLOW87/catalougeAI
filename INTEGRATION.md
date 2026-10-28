@@ -36,10 +36,16 @@ npm dependencies are small: `tesseract.js` (OCR, WASM — no system install),
 currently in devDependencies and **must move to dependencies** when this is deployed
 as part of something else.
 
-`ANTHROPIC_API_KEY` is **optional**. Everything normal — reading known layouts,
-quality checks, the assistant's factual answers — runs locally with no key and no
-cost. A key is only used for a layout no local reader recognises, and for free-form
-assistant wording.
+`ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) is **optional**, gated behind
+`CATALOGUE_ENABLE_AI_FALLBACK=1`. Everything normal — reading known layouts,
+quality checks, the assistant's local commands and rule-answerable questions —
+runs locally with no key and no cost. A key is only used for a layout no local
+reader recognises, and for the assistant's free-form wording (`/api/interpret`,
+see §2) — questions AND commands typed in a way the local parser does not
+recognise. Both endpoints pick the same provider the same way: OpenAI if
+`OPENAI_API_KEY` is set, Anthropic otherwise. The key lives on the **server
+only**, set once for the whole deployment — never per user, never sent to or
+stored in the browser.
 
 ---
 
@@ -53,7 +59,7 @@ database.
 | `POST` | `/api/ingest` | `{ pdf: base64, into: categoryId }` | **NDJSON stream** (see below) |
 | `POST` | `/api/ingest-image` | `{ image: base64, mime, into }` | one JSON result |
 | `POST` | `/api/export` | `{ products, category }` or `{ catalogues: [...] }` | `application/pdf` |
-| `POST` | `/api/ask` | `{ question, summary }` | `{ source, text }` |
+| `POST` | `/api/interpret` | `{ text, summary, hasAttachment, findingTitles }` | `{ kind: "command"\|"answer"\|"clarify", text }` |
 | `GET` | `/api/ingest/status` | — | `{ ready, localReaders, aiFallback }` |
 
 ### `/api/ingest` streams, and its result arrives in parts

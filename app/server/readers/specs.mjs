@@ -7,6 +7,10 @@
 //
 // All boxes are millimetres relative to the top-left of the product's anchor badge.
 
+// Reviewed rectangles belong to a recognized source layout, in millimetres.
+// They are not post-import overrides keyed by the catalogue's product names.
+const rect=(x,y,w,h)=>({x:x*210/827,y:y*210/827,w:w*210/827,h:h*210/827})
+const usage=(x,y,w,h,caption='')=>({box:rect(x,y,w,h),caption,role:'usage'})
 export const BUILTIN_SPECS = [
   {
     // These pages are catalogue material, but contain no product cards. They
@@ -15,6 +19,7 @@ export const BUILTIN_SPECS = [
     title: 'Wainscoting cover / comparison / installation',
     builtin: true,
     nonProductPages: [1, 2, 6],
+    nonProductEvidence:{1:[/WAINSCOTING/,/POLYSTYRENE/],2:[/WAINSCOTING/,/COMPARISON/],6:[/INSTALLATION/,/BASICSTEPS|REQUIREDTOOLS/]},
   },
   {
     // Page 7 is a two-card feature sheet. The left side of each row is the
@@ -30,7 +35,10 @@ export const BUILTIN_SPECS = [
       { x: 5, y: 28, w: 82, h: 72 },
       { x: 5, y: 102, w: 82, h: 72 },
     ] },
-    kinds: [{ id: 'wave-crystal-fixed', fields: [
+    kinds: [{ id: 'wave-crystal-fixed', examplesByAnchor:[
+      [usage(300,128,241,245),usage(546,128,241,245)],
+      [usage(300,421,241,244),usage(546,421,241,244)],
+    ], fields: [
       { key: 'name', type: 'text', required: true,
         valueByAnchor: ['Wave Crystal Brick (Full)', 'Wave Crystal Brick (End)'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
@@ -59,7 +67,7 @@ export const BUILTIN_SPECS = [
       { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
         valueByAnchor: ['700mm (W) x 1400mm (L)', '700mm (W) x 1400mm (L)'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
-      { key: 'photo', type: 'photo', source: true, box: { x: 0, y: 12, w: 102, h: 112 } },
+      { key: 'photo', type: 'photo', source: true, preserveScene: true, box: { x: 0, y: 12, w: 102, h: 112 } },
     ] }],
   },
   {
@@ -73,18 +81,33 @@ export const BUILTIN_SPECS = [
     anchor: { type: 'fixed', pages: [8], boxes: [
       { x: 5, y: 27, w: 48, h: 85 },
       { x: 5, y: 118, w: 48, h: 85 },
-      { x: 5, y: 184, w: 48, h: 85 },
+      { x: 5, y: 210, w: 48, h: 85 },
     ] },
-    kinds: [{ id: 'mirror-fixed', fields: [
+    kinds: [{ id: 'mirror-fixed', examplesByAnchor:[
+      [usage(553,108,250,146),usage(553,264,250,148)],
+      [usage(553,423,250,290)], [usage(553,728,250,430)],
+    ], fields: [
       { key: 'name', type: 'text', required: true,
         valueByAnchor: ['M01 Full Mirror', 'M02 Quater Mirror', 'M03 Half Mirror'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
       { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
         valueByAnchor: ['304mm x 304mm', '215mm x 215mm', '304mm x 304mm'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
-      { key: 'photo', type: 'photo', box: { x: 1, y: 15, w: 46, h: 55 } },
-      { key: 'drawing', type: 'lineart', box: { x: 60, y: 0, w: 50, h: 85 } },
+      { key:'photo',type:'photo',source:true,absolute:true,boxByAnchor:[rect(45,217,145,136),rect(60,604,125,101),rect(45,935,150,132)] },
+      { key:'drawing',type:'lineart',absolute:true,boxByAnchor:[rect(260,174,225,200),rect(260,540,190,180),rect(258,887,233,233)] },
     ] }],
+  },
+  {
+    // Preserve the already approved Flat Bar/display pairing on recognized
+    // uploads. The printed white title is checked before these source crops run.
+    id:'wainscoting-flat-bar-display',title:'PS Flat Bar with its original installation display',builtin:true,augment:true,
+    anchor:{type:'fixed',pages:[3],boxes:[rect(35,865,414,289)]},
+    kinds:[{id:'flat-bar-display',examplesByAnchor:[[usage(455,865,354,289,'Pemasangan PS FLAT BAR')]],fields:[
+      {key:'name',type:'text',required:true,valueByAnchor:['PS FLAT BAR'],codeByAnchor:['PSFLATBAR'],
+        codeEvidenceByAnchor:[{box:{x:14,y:0,w:84,h:11},lightText:true}],box:{x:0,y:0,w:1,h:1}},
+      {key:'subtitle',type:'text',required:true,valueByAnchor:['40mm (W) x 15mm (H) x 3000mm (L)'],box:{x:0,y:0,w:1,h:1}},
+      {key:'photo',type:'photo',source:true,absolute:true,box:rect(35,865,414,289)},
+    ]}],
   },
   {
     // Page 4 corner-edge profiles are feature diagrams rather than photo blocks.
@@ -96,13 +119,25 @@ export const BUILTIN_SPECS = [
       { x: 104, y: 88, w: 96, h: 42 },
       { x: 104, y: 132, w: 96, h: 55 },
     ] },
-    kinds: [{ id: 'corner-edge', fields: [
+    kinds: [{ id: 'corner-edge', layoutPairGroup:'aluminium-corners', layoutFullRow:true, fields: [
       { key: 'name', type: 'text', required: true,
         valueByAnchor: ['C-R80', 'C-R100'], box: { x: 55, y: 0, w: 40, h: 12 } },
       { key: 'size', type: 'text', required: true, matches: /\d+\s*mm/i,
         valueByAnchor: ['115mm', '143mm'], box: { x: 0, y: 0, w: 1, h: 1 } },
-      { key: 'drawing', type: 'lineart', box: { x: 0, y: 0, w: 96, h: 42 } },
+      {key:'photo',type:'photo',source:true,absolute:true,boxByAnchor:[rect(67,602,57,131),rect(144,568,55,165)]},
+      {key:'drawing',type:'lineart',absolute:true,boxByAnchor:[rect(463,394,326,144),rect(452,572,343,161)]},
     ] }],
+  },
+  {
+    id:'wainscoting-csw-complete',title:'Complete CSW corner profiles and measurements',builtin:true,augment:true,
+    anchor:{type:'fixed',pages:[4],boxes:[rect(48,154,248,167),rect(311,158,273,163)]},
+    kinds:[{id:'csw-complete',layoutPairGroup:'csw-corners',layoutFullRow:true,fields:[
+      {key:'name',type:'text',required:true,valueByAnchor:['CSW - Coner Solid Wainscoting','CSW - Coner Wainscoting'],codeByAnchor:['CSW','CSW'],requiredTextByAnchor:['SOLID','WAINSCOTING'],
+        codeEvidenceByAnchor:[{box:{x:11.5,y:0,w:21,h:10},lightText:true},{box:{x:13,y:-.7,w:22,h:9},lightText:true}],box:{x:0,y:0,w:1,h:1}},
+      {key:'subtitle',type:'text',required:true,valueByAnchor:['60mm (W) x 60mm (H) x 2440mm (L) / 3000mm (L)','89mm (W) x 31mm (H) x 2440mm (L) / 3000mm (L)'],box:{x:0,y:0,w:1,h:1}},
+      {key:'photo',type:'photo',source:true,absolute:true,boxByAnchor:[rect(73,190,91,125),rect(312,194,133,99)]},
+      {key:'drawing',type:'lineart',absolute:true,boxByAnchor:[rect(170,197,122,119),rect(438,193,145,119)]},
+    ]}],
   },
   {
     // CW02-CW04 each combine a top product card with its matching drawing below.
@@ -115,15 +150,32 @@ export const BUILTIN_SPECS = [
       { x: 76, y: 166, w: 54, h: 90 },
       { x: 147, y: 166, w: 54, h: 90 },
     ] },
-    kinds: [{ id: 'corner-flower-fixed', fields: [
+    kinds: [{ id: 'corner-flower-fixed', examplesByAnchor:[
+      [{...usage(10,1047,105,110,'Pemasangan CW02'),displayWithProductCode:'WB06',relatedProductCodes:['WB06','CW02']}],
+      [{...usage(413,1047,97,110,'Pemasangan CW03'),displayWithProductCode:'WB06',relatedProductCodes:['WB06','CW03']}],[],
+    ], fields: [
       { key: 'name', type: 'text', required: true,
         valueByAnchor: ['CW02', 'CW03', 'CW04'], box: { x: 1, y: 1, w: 1, h: 1 } },
       { key: 'subtitle', type: 'text', required: true, matches: /\d+\s*mm/i,
         valueByAnchor: ['172mm x 172mm x 35mm', '172mm x 172mm x 20mm', '147mm x 147mm x 12mm'],
         box: { x: 1, y: 1, w: 1, h: 1 } },
       { key: 'photo', type: 'photo', box: { x: 1, y: 10, w: 52, h: 35 } },
-      { key: 'drawing', type: 'lineart', box: { x: 1, y: 47, w: 52, h: 40 } },
+      { key:'drawing',type:'lineart',absolute:true,boxByAnchor:[rect(18,850,268,181),rect(299,850,271,181),rect(575,850,238,181)] },
     ] }],
+  },
+  {
+    id:'wainscoting-bendable-profiles',title:'Wainscoting bendable profiles (WB01/WB02/WB05/WB06)',builtin:true,
+    anchor:{type:'fixed',pages:[5],boxes:[{x:5,y:30,w:43,h:76},{x:57,y:30,w:43,h:76},{x:110,y:30,w:40,h:76},{x:161,y:30,w:42,h:76}]},
+    kinds:[{id:'bendable-profiles',layoutRowGroup:'wains-bendable-profiles',
+      supportStripByAnchor:[rect(20,437,775,180),null,null,rect(10,1047,805,110)],
+      supportCaptionByAnchor:['WB01','','','Contoh pemasangan WB06 bersama CW02 / CW03'],examplesByAnchor:[
+      [usage(20,437,422,135),usage(448,437,75,135),{...usage(527,437,122,135),role:'supplementary'},usage(654,437,141,135)],
+      [],[],[usage(134,1047,260,110,'Pemasangan WB06 dengan CW02'),usage(530,1047,285,110,'Pemasangan WB06 dengan CW03')],
+    ],fields:[
+      {key:'name',type:'text',required:true,valueByAnchor:['WB01','WB02','WB05','WB06'],box:{x:0,y:0,w:1,h:1}},
+      {key:'subtitle',type:'text',required:true,valueByAnchor:['40mm (W) x 17mm (H) x 5100mm (L)','30mm (W) x 13mm (H) x 5100mm (L)','22mm (W) x 10mm (H) x 5090mm (L)','30mm (W) x 10mm (H) x 5120mm (L)'],box:{x:0,y:0,w:1,h:1}},
+      {key:'photo',type:'photo',source:true,absolute:true,boxByAnchor:[rect(29,151,147,224),rect(256,154,122,223),rect(466,155,92,224),rect(657,155,119,223)]},
+    ]}],
   },
   {
     // Page 9 is a special mirror layout: the M04 and M05 cards are surrounded
@@ -145,6 +197,10 @@ export const BUILTIN_SPECS = [
     },
     kinds: [{
       id: 'mirror-folded-card',
+      examplesByAnchor:[
+        [usage(435,94,203,188,'Folded to the left'),usage(435,286,203,186,'Folded to the right'),usage(435,478,203,241,'Fully folded'),usage(24,489,213,250,'This mirror uses a strong glue sticker on the back.')],
+        [usage(435,754,127,194,'This mirror can be folded to 2 parts backwards'),usage(435,953,127,207,'This mirror can be folded to 4 parts backwards'),usage(258,959,154,201,'This mirror uses a strong glue sticker on the back.')],
+      ],
       label: 'M04/M05 card',
       fields: [
         { key: 'name', type: 'text', required: true,
@@ -159,7 +215,7 @@ export const BUILTIN_SPECS = [
           // Start below the title and stop above the printed size caption.
           { x: 3, y: 32, w: 48, h: 46 },
         ], box: { x: 3, y: 25, w: 48, h: 60 } },
-        { key: 'drawing', type: 'lineart', box: { x: 58, y: 0, w: 48, h: 92 } },
+        {key:'drawing',type:'lineart',absolute:true,boxByAnchor:[rect(250,212,170,211),rect(249,773,171,171)]},
       ],
     }],
   },
@@ -362,6 +418,8 @@ export const BUILTIN_SPECS = [
         // description starts around 28mm across — well clear of the badge — and
         // runs one or two lines depending on its length.
         id: 'csw',
+        layoutPairGroup:'csw-corners',
+        layoutFullRow:true,
         label: 'CSW corner panel',
         fields: [
           // The title is two differently-coloured parts side by side, not stacked
@@ -413,11 +471,11 @@ export const BUILTIN_SPECS = [
           // from where the title/caption landed, unlike the standard kind) is
           // enough here — this card's internal layout does not vary the way a
           // one-line/two-line PW title does.
-          { key: 'photo', type: 'photo', box: { x: 0, y: 12, w: 33, h: 28 } },
+          { key: 'photo', type: 'photo', source:true, box: { x: 0, y: 10, w: 35, h: 32 } },
           // The quarter-round/arch cross-section with its own dimension lines and
           // numbers, printed in the same dark brown as body text — well above the
           // default 185 line-art cut, so no spec-level `inkCut` override is needed.
-          { key: 'drawing', type: 'lineart', box: { x: 33, y: 12, w: 0, h: 19 } },
+          { key: 'drawing', type: 'lineart', box: { x: 29, y: 11, w: 0, h: 29 } },
         ],
       },
       {

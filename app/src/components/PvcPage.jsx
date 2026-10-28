@@ -22,9 +22,10 @@ function Variant({ v }) {
   )
 }
 
-function Row({ p, editable, onEdit, onDelete }) {
+function Row({ p, editable, onEdit, onDelete, highlighted }) {
   return (
-    <div className={`pvc-row ${p.exception ? 'pvc-row--tall' : ''}`}>
+    <div className={`pvc-row ${p.exception ? 'pvc-row--tall' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`}
+         id={editable ? `product-${p.id}` : undefined}>
       <div className="pvc-left">
         <Badge n={p.slot} variant="pvc" />
         <div className="pvc-name">{p.name}</div>
@@ -54,7 +55,7 @@ function Row({ p, editable, onEdit, onDelete }) {
   )
 }
 
-export default function PvcPage({ page, editable, onEdit, onDelete }) {
+export default function PvcPage({ page, editable, onEdit, onDelete, highlight = [] }) {
   const first = page.index === 1
   return (
     <div className="cat-page cat-page--pvc" data-page={page.index}>
@@ -63,7 +64,8 @@ export default function PvcPage({ page, editable, onEdit, onDelete }) {
       </div>
       <div className="pvc-flow">
         {page.rows.map(p => (
-          <Row key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} />
+          <Row key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
+               highlighted={highlight.includes(p.id)} />
         ))}
       </div>
     </div>

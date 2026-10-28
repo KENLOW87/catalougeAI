@@ -23,6 +23,11 @@ import { readWithRules, ruleReadIsUsable, describeReport } from './readers/index
 import { findAnchors } from './readers/spec.mjs'
 import { BUILTIN_SPECS } from './readers/specs.mjs'
 import { extractNativePdfImages, matchNativePdfImage } from './native-pdf-images.mjs'
+import { prepareImportPhotos } from './prepare-import-photos.mjs'
+import { readProductDimensions } from './read-dimensions.mjs'
+import { findProductExamples, attachProductExamples, validSourceBox, coversPrimaryPhoto } from './product-examples.mjs'
+import { validateImportedAssociations } from './image-association.mjs'
+import {matchesRenderedPhoto} from './native-photo-evidence.mjs'
 import { ocr, shutdownOcr } from './ocr.mjs'
 import { suggestDestination, suggestedCatalogue } from '../src/lib/route.js'
 
@@ -87,8 +92,10 @@ const SCHEMA = {
           size: { type: 'string' },
           category: { type: 'string' },
           description: { type: 'string' },
+          photo_context: { type: 'string', enum: ['installed-scene', 'standalone-product'] },
           photo_box: BOX,
           drawing_box: BOX,
+          examples: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['box', 'caption','role'], properties: { box: BOX, caption: { type: 'string' }, role:{type:'string',enum:['usage','supplementary','drawing','primary-card']} } } },
           finishes: {
             type: 'array',
             items: {
@@ -137,6 +144,8 @@ Rules that matter:
 - Return every product even when cards are scattered or the page layout changes.
   Return them in reading order: left to right, then top to bottom. Do not merge
   two cards into one product and do not invent a missing card.
+- Multiple folded, rear, glue/backing or installation views of the SAME named product belong in its examples array. They are not additional products or finishes. Preserve each example image, its associated diagram and caption together in its box. Keep the main dimension sketch separate from examples.
+- photo_context: use installed-scene when the main photo shows the product installed in a room/showroom, especially mirrors with reflections, walls and lighting that explain its appearance. Keep its full rectangular photo, do not silhouette-cut an installed scene. Use standalone-product only for an isolated product shot whose background can be removed without losing context.
 
 Boxes are normalised 0-1 against the page. Give your best estimate of the tight
 bounding box; it will be refined automatically, so approximate is fine, but do not
@@ -226,14 +235,13 @@ export function cutSourceAsset(page, box) {
 }
 
 /**
- * Source photo cut used by automatic PDF ingest. It removes a clearly dark,
- * flat background, but never trims the product silhouette or changes a light
- * photo. The source rectangle therefore stays the same size as the PDF field.
+ * Preserve source pixels for recovery; the shared final photo stage handles
+ * background removal after all PDF readers finish.
  */
 function cutSourcePhotoAsset(page, box) {
   const snapped = snapBox(page, box)
   const img = crop(page, snapped.x, snapped.y, snapped.w, snapped.h)
-  return `data:image/png;base64,${toBuffer(flattenDarkBackground(img)).toString('base64')}`
+  return `data:image/png;base64,${toBuffer(img).toString('base64')}`
 }
 
 /**
@@ -250,15 +258,16 @@ function nativePhoto(nativePage, assetPage, box) {
   // same conservative dark-background pass to them. Never trim or touch light
   // photography, and leave formats we cannot decode unchanged.
   const match = image.data.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/)
-  if (!match) return image.data
+  if (!match) return null
   try {
     const source = readImage(Buffer.from(match[2], 'base64'))
+    if(!matchesRenderedPhoto(source,crop(assetPage,box.x,box.y,box.w,box.h)))return null
     const cleaned = flattenDarkBackground(source)
     return cleaned === source
       ? image.data
       : `data:image/png;base64,${toBuffer(cleaned).toString('base64')}`
   } catch {
-    return image.data
+    return null
   }
 }
 
@@ -266,6 +275,9 @@ function preferNativePhotos(product, nativePage, assetPage, preserveRendered = f
   if (!product?.__sourceBoxes || !assetPage) return product
   const out = { ...product }
   const boxes = product.__sourceBoxes
+  const normalized=b=>b?{x:b.x/assetPage.width,y:b.y/assetPage.height,w:b.w/assetPage.width,h:b.h/assetPage.height}:null
+  out.sourceBox=normalized(boxes.photo)
+  out.sourceDrawingBox=normalized(boxes.drawing)
   // Wainscoting PDFs frequently reuse the same embedded raster object with
   // different transforms. pdftohtml reports those transforms as duplicate
   // image rectangles, so overlap matching can attach PW06's image to PW02 or
@@ -295,7 +307,7 @@ function preferNativePhotos(product, nativePage, assetPage, preserveRendered = f
     delete out.__sourceBoxes
     return out
   }
-  if (!nativePage) return product
+  if (!nativePage) {delete out.__sourceBoxes;return out}
   const direct = nativePhoto(nativePage, assetPage, boxes.photo)
   if (direct) {
     out.photo = direct
@@ -327,7 +339,7 @@ export function hasCredentials() {
     Boolean(process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
 }
 
-const hasOpenAICredentials = () => process.env.CATALOGUE_ENABLE_AI_FALLBACK === '1' &&
+export const hasOpenAICredentials = () => process.env.CATALOGUE_ENABLE_AI_FALLBACK === '1' &&
   Boolean(process.env.OPENAI_API_KEY)
 
 async function readWithOpenAI(imageData, pageNo) {
@@ -422,11 +434,26 @@ function extractDetailPhotos(page) {
   }).filter(Boolean)
 }
 
-function adoptRuleProduct(p, index, pageNo, spec) {
+export function adoptRuleProduct(p, index, pageNo, spec) {
   const base = {
     id: `ing${index}_${Date.now().toString(36)}`,
     name: p.name ?? '',
     drawing: p.drawing ?? null,
+    drawingKind: p.drawingKind ?? null,
+    drawingPhoto: p.drawingPhoto ?? null,
+    drawingOriginal: p.drawingOriginal ?? null,
+    drawingPreserved:Boolean(p.drawingPreserved),
+    photoTreatmentMode: p.photoTreatmentMode ?? null,
+    examples: p.examples ?? [],
+    sourceReferences:p.sourceReferences ?? [],
+    extraRole:p.extraRole,
+    sourceBox:p.sourceBox ?? null,
+    sourceDrawingBox:p.sourceDrawingBox ?? null,
+    layoutPairGroup:p.layoutPairGroup,
+    layoutFullRow:p.layoutFullRow,
+    layoutRowGroup:p.layoutRowGroup,
+    supportStrip:p.supportStrip,
+    supportCaption:p.supportCaption,
     sourcePreserved: Boolean(p.sourcePreserved),
     sourcePage: pageNo,
     readBy: 'rules',
@@ -577,9 +604,37 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       // more pages of an existing catalogue never touch the API.
       const assetPage = readImage(assetPages[Math.min(i, assetPages.length - 1)])
       const nativePage = nativePages.find(p => p.number === i + 1) ?? null
+      const enrichExamples = async rawProducts => {
+        if(rawProducts.every(p=>p.examplesTrusted))return rawProducts
+        if (!process.env.OPENAI_API_KEY || !rawProducts.length) return rawProducts
+        if (shouldStop()) throw new IngestCancelled()
+        onProgress(`Mengenal gambar contoh pada halaman ${i + 1}…`)
+        const controller = new AbortController()
+        const timer = setInterval(() => { if (shouldStop()) controller.abort() }, 500)
+        try {
+          const vision = `data:image/png;base64,${(await readFile(visionPages[i])).toString('base64')}`
+          const primaryBoxes = rawProducts.flatMap(p => {
+            const b = p.__sourceBoxes?.photo
+            return b ? [{ x:b.x/assetPage.width, y:b.y/assetPage.height, w:b.w/assetPage.width, h:b.h/assetPage.height }] : []
+          })
+          const drawingBoxes=rawProducts.flatMap(p=>{
+            const b=p.__sourceBoxes?.drawing
+            return b?[{x:b.x/assetPage.width,y:b.y/assetPage.height,w:b.w/assetPage.width,h:b.h/assetPage.height}]:[]
+          })
+          const groups = await findProductExamples(vision, rawProducts.map(p => p.name).filter(Boolean), { signal: controller.signal, primaryBoxes, drawingBoxes })
+          return attachProductExamples(rawProducts, groups.filter(g=>!rawProducts.find(p=>p.name===g.name)?.examplesTrusted), box => cutSourceAsset(assetPage, box), product => {
+            const b = product.__sourceBoxes?.drawing
+            return b ? { x: b.x / assetPage.width, y: b.y / assetPage.height, w: b.w / assetPage.width, h: b.h / assetPage.height } : null
+          })
+        } catch (e) {
+          if (shouldStop()) throw new IngestCancelled()
+          warnings.push(`Page ${i + 1}: gambar contoh belum dapat diasingkan (${e.message}); sumber asal dikekalkan.`)
+          return rawProducts
+        } finally { clearInterval(timer) }
+      }
       let ruled = null
       try {
-        ruled = await readWithRules(assetPage, onProgress, i + 1)
+        ruled = await readWithRules(assetPage, onProgress, i + 1,{sourceImage:readImage(visionPages[i])})
       } catch (e) {
         warnings.push(`Page ${i + 1}: the local reader failed (${e.message}); using the AI reader.`)
       }
@@ -632,8 +687,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
           }
         }
 
-        for (const raw of ruled.products) {
-          const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting)
+        for (const raw of await enrichExamples(ruled.products)) {
+          const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting || raw._spec?.startsWith('wainscoting-'))
           // A layout with no category of its own (the shape-based photo grid) lands
           // in whichever catalogue the user had open.
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
@@ -718,8 +773,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         // replacing them with a blank page.
         if (ruled?.spec && ruled.products?.length) {
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
-          for (const raw of ruled.products) {
-            const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting)
+          for (const raw of await enrichExamples(ruled.products)) {
+            const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting || raw._spec?.startsWith('wainscoting-'))
             products.push(adoptRuleProduct(p, products.length + 1, i + 1, spec))
           }
           warnings.push(`Page ${i + 1}: AI returned no products; kept ${ruled.products.length} local products.`)
@@ -761,6 +816,11 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
           sourcePreserved: true,
           sourceBox: p.photo_box ?? null,
           sourceDrawingBox: p.drawing_box ?? null,
+          drawingPreserved:Boolean(p.drawing_box),
+          photoTreatmentMode: p.photo_context === 'installed-scene' ? 'preserve-scene' : null,
+          examples: (Array.isArray(p.examples) ? p.examples : []).filter(e => validSourceBox(e.box) && !coversPrimaryPhoto(e.box, p.photo_box)).slice(0, 8).map(e => ({
+            image: cutSourceAsset(assetPage, e.box), caption: String(e.caption ?? '').slice(0, 160), sourceBox: e.box, role:e.role,
+          })),
         }
 
         try {
@@ -844,8 +904,24 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     console.log(`[route] "${filename || '(no filename)'}" -> ${destination.id}` +
       ` (${destination.confident ? 'confident' : 'NOT confident'})` +
       `${destination.why?.length ? ' — ' + destination.why.join('; ') : ''}`)
+    warnings.push(...await validateImportedAssociations(products,{onProgress,readText:async image=>{
+      if(shouldStop())throw new IngestCancelled()
+      const raw=readImage(Buffer.from(image.split(',')[1],'base64'))
+      const ratio=Math.min(1,900/Math.max(raw.width,raw.height))
+      const width=Math.max(1,Math.round(raw.width*ratio)),height=Math.max(1,Math.round(raw.height*ratio))
+      const small={width,height,data:Buffer.alloc(width*height*4)}
+      for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+        const i=(Math.floor(y/ratio)*raw.width+Math.floor(x/ratio))*4
+        raw.data.copy?raw.data.copy(small.data,(y*width+x)*4,i,i+4):small.data.set(raw.data.subarray(i,i+4),(y*width+x)*4)
+      }
+      return (await ocr(small)).text
+    }}))
+    if(shouldStop())throw new IngestCancelled()
+    warnings.push(...await readProductDimensions(products, { onProgress, shouldStop }))
+    const photoTreatment = await prepareImportPhotos(products, { onProgress, shouldStop })
+    warnings.push(...photoTreatment.warnings)
     onProgress('Done.')
-    return { products, pages: count, warnings, chrome, routing }
+    return { products, pages: count, warnings, chrome, routing, photoTreatment }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

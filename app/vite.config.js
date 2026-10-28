@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Export/render artefacts may be large and temporarily locked on Windows.
+    // They are not application sources and must not terminate the dev watcher.
+    watch: { ignored: ['**/.tmp/**', '**/output/**'] },
     // Bind IPv4 loopback explicitly. Left to itself this listened on [::1] ONLY, so
     // any client that resolves "localhost" to 127.0.0.1 — Chrome in some profiles,
     // and the automation used to test this app — got "This site can't be reached"

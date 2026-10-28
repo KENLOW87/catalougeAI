@@ -342,8 +342,26 @@ and survives edits, reloads and the next import — an answered check never asks
 ### With and without an API key
 
 Everything above is free and runs in the browser. A key only adds free-form wording
-and judgement ("is `Pasific Grey` a typo?"). Each answer says which engine replied —
-*from your data* or *answered by AI* — so you always know whether anything was spent.
+and judgement — both for questions ("is `Pasific Grey` a typo?") and for commands
+that do not match one of the exact phrasings above:
+
+```
+you: remove the hand photo tooo
+bot: Tell me which one to delete — by its name or code, for example "delete PV07."
+     (no key — only the exact phrasings above are understood)
+
+you: remove the hand photo tooo
+bot: Discarded that photo — attach another whenever you are ready.
+     (with a key — the AI rewrites it into a phrasing the app already knows,
+     then the SAME local rules decide what happens next: nothing is ever
+     changed without a click, and a product the AI got wrong is simply not found)
+```
+
+Each answer says which engine replied — *from your data* or *answered by AI* — so
+you always know whether anything was spent. Needs `CATALOGUE_ENABLE_AI_FALLBACK=1`
+and either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` set before `npm run server` —
+see `start-catalogue.bat`. Same provider choice as PDF ingest: OpenAI is used
+when `OPENAI_API_KEY` is set, Anthropic otherwise.
 
 ---
 

@@ -174,3 +174,15 @@ export async function saveCustomCategory(category) {
     await tx(db, 'readwrite', s => s.put(category, `custom.${category.id}`))
   } finally { db.close() }
 }
+
+/** Wipe EVERY record this browser holds — every catalogue, header, accepted
+ *  check, deletion marker and created category. For starting over clean, e.g.
+ *  before demoing to a new company. The two built-in categories' seed examples
+ *  live in code, not storage, so the caller must write an explicit empty
+ *  catalogue record for them too if a blank slate (not the shipped demo
+ *  content) is wanted — same reasoning as the empty-marker note on
+ *  `removeCatalogue` above. */
+export async function clearAll() {
+  const db = await open()
+  try { await tx(db, 'readwrite', s => s.clear()) } finally { db.close() }
+}

@@ -8,7 +8,7 @@ import { getCategory } from '../lib/categories/index.js'
 // Each category supplies its own paginator and its own page template; everything
 // else is shared.
 
-export default function Catalogue({ categoryId, category: given, products, editable = false, onEdit, onDelete }) {
+export default function Catalogue({ categoryId, category: given, products, editable = false, onEdit, onDelete, highlight = [] }) {
   // A user-created category is not in the static registry, so it is passed in.
   const category = given ?? getCategory(categoryId)
   const pages = category.paginate(products)
@@ -17,7 +17,7 @@ export default function Catalogue({ categoryId, category: given, products, edita
   return (
     <div className="cat-doc">
       {pages.map(pg => (
-        <Page key={pg.index} page={pg} editable={editable} onEdit={onEdit} onDelete={onDelete} />
+        <Page key={pg.index} page={pg} editable={editable} onEdit={onEdit} onDelete={onDelete} highlight={highlight} />
       ))}
     </div>
   )

@@ -8,6 +8,7 @@
 // reproduction of any particular design, but a correct catalogue with zero work.
 
 import DefaultPage from '../../components/DefaultPage.jsx'
+import { usageExamples, isDimensionReference, groupSharedUsage, needsFullTechnicalRow, orderTechnicalSpace } from '../product-layout.js'
 
 const COLUMNS = 4
 const PAGE_H = 297
@@ -50,7 +51,7 @@ export function defaultCategoryFor(parent, chrome = null) {
     ...meta,
     Page: props => DefaultPage({ ...props, category: meta }),
     seed: [],
-    order: products => products,
+    order: orderTechnicalSpace,
 
     // Same positional numbering as everywhere else: the badge is computed over the
     // flow order and never stored on the product.
@@ -60,6 +61,12 @@ export function defaultCategoryFor(parent, chrome = null) {
     // not consume a number — numbering counts products, so inserting a cover cannot
     // renumber the catalogue.
     paginate: items => {
+      // Explicit image-page positions are applied to completed pages. They must
+      // never split an accepted product/source row or change its pagination.
+      const positioned = items.filter(p => p.isPage && p.origin === 'manual-image-page' && Number.isInteger(p.pagePosition) && p.pagePosition > 0)
+      const positionedIds = new Set(positioned.map(p => p.id))
+      items = items.filter(p => !positionedIds.has(p.id))
+      items=groupSharedUsage(orderTechnicalSpace(items))
       const pages = []
       let rows = []          // rows waiting to be placed on the current page
       let cell = []          // products waiting to fill the current row
@@ -73,17 +80,75 @@ export function defaultCategoryFor(parent, chrome = null) {
         }
       }
 
-      for (const item of items) {
+      for (let itemIndex=0;itemIndex<items.length;itemIndex++) {
+        const item=items[itemIndex]
         if (item.isPage) {
           flushPage()                                   // finish what is in hand…
           pages.push({ index: pages.length + 1, plate: item, rows: [], blocks: [] })
           continue                                      // …then the page, on its own
         }
         const product = { ...item, slot: ++slot }
+        // Keep a row explicitly identified in the source together. Supporting
+        // material occupies a shared band beneath the cards, not extra product
+        // rows. This rule uses source metadata, never a product-name guess.
+        if(product.layoutRowGroup) {
+          flushRow()
+          const group=[product]
+          while(itemIndex+1<items.length) {
+            const next=items[itemIndex+1]
+            if(!next||next.isPage||next.layoutRowGroup!==product.layoutRowGroup)break
+            group.push({...next,slot:++slot});itemIndex++
+          }
+          const support=group.some(p=>p.supportStrip||usageExamples(p).some(e=>!isDimensionReference(e)))
+          // A growing family stays together: wrap cards four across, then show
+          // its original supporting material once after the final product.
+          if(group.length>COLUMNS&&group.length<=COLUMNS*2){
+            if(rows.length)flushPage()
+            group.sourceGroup=true;group.sourceGroupBundle=true
+            pages.push({index:pages.length+1,rows:[group],blocks:[]})
+            continue
+          }
+          if(group.length>COLUMNS*2){
+            if(rows.length)flushPage()
+            let remaining=group
+            while(remaining.length>COLUMNS*2){
+              const chunk=remaining.slice(0,COLUMNS*2);remaining=remaining.slice(COLUMNS*2)
+              const cardRows=[]
+              for(let start=0;start<chunk.length;start+=COLUMNS){const row=chunk.slice(start,start+COLUMNS);row.sourceGroup=true;cardRows.push(row)}
+              pages.push({index:pages.length+1,rows:cardRows,blocks:[]})
+            }
+            remaining.sourceGroup=true;remaining.sourceGroupBundle=true;remaining.supportForAll=group
+            pages.push({index:pages.length+1,rows:[remaining],blocks:[]})
+            continue
+          }
+          if(rows.length&&rows.length+(support?2:1)>rowsPerPage)flushPage()
+          group.sourceGroup=true
+          rows.push(group)
+          if(support){const band=[];band.supportFor=group;rows.push(band)}
+          while(rows.length>=rowsPerPage)pages.push({index:pages.length+1,rows:rows.splice(0,rowsPerPage),blocks:[]})
+          continue
+        }
+        // Explicit source-related technical pairs share an existing wide row.
+        // Ordinary products still use four columns; other drawings retain their
+        // established wide layout.
+        if(product.layoutPairGroup && !needsFullTechnicalRow(product)) {
+          flushRow()
+          const pair=[product],next=items[itemIndex+1]
+          if(next && !next.isPage && next.layoutPairGroup===product.layoutPairGroup) {
+            pair.push({...next,slot:++slot});itemIndex++
+          }
+          rows.push(pair)
+          if(rows.length===rowsPerPage) {
+            pages.push({index:pages.length+1,rows:rows.splice(0,rowsPerPage),blocks:[]})
+          }
+          continue
+        }
         // A dimension drawing needs real width beside its product photo. Do not
         // squeeze that pair into a four-column grid: finish the current grid row,
         // then give this product the whole row so both source rectangles stay clear.
-        if (product.drawing) {
+        const visibleDrawing = product.drawing && !(product.drawingPresentation === 'dimensions' && product.dimensionText)
+        const supplementary = usageExamples(product).filter(example => !isDimensionReference(example))
+        if (needsFullTechnicalRow(product) || visibleDrawing || supplementary.length) {
           flushRow()
           rows.push([product])
           if (rows.length === rowsPerPage) {
@@ -99,7 +164,11 @@ export function defaultCategoryFor(parent, chrome = null) {
       }
       flushPage()
 
-      if (!pages.length) pages.push({ index: 1, rows: [], blocks: [] })
+      if (!pages.length && !positioned.length) pages.push({ index: 1, rows: [], blocks: [] })
+      for (const plate of [...positioned].sort((a,b)=>a.pagePosition-b.pagePosition)) {
+        pages.splice(Math.min(plate.pagePosition - 1, pages.length), 0, { plate, rows: [], blocks: [] })
+      }
+      pages.forEach((page,i)=>{page.index=i+1})
       return pages
     },
 
@@ -138,8 +207,19 @@ export function defaultCategoryFor(parent, chrome = null) {
       { key: 'subtitle', label: 'Description', type: 'text', placeholder: 'Fishbelly White Marble' },
       { key: 'third', label: 'Third line (optional)', type: 'text' },
       { key: 'photo', label: 'Product photo', type: 'image', required: true },
+      { key: 'photoTreatmentMode', label: 'Photo treatment', type: 'select', options: [
+        { value: '', label: 'Automatic / standalone product' },
+        { value: 'preserve-scene', label: 'Keep original rectangular scene' },
+      ] },
       { key: 'drawing', label: 'Dimension drawing (optional)', type: 'image',
         hint: 'never generated — upload it if this product has one' },
+      { key: 'dimensionText', label: 'Ukuran dibaca daripada sumber', type: 'text' },
+      { key: 'drawingPresentation', label: 'Paparan ukuran', type: 'select', options: [
+        { value: '', label: 'Drawing asal' },
+        { value: 'dimensions', label: 'Ukuran di bawah gambar produk' },
+      ] },
+      ...(p.examples?.length ? [{ key: 'exampleImages', label: 'Gambar contoh', type: 'gallery' }] : []),
+      ...(p.sourceReferences?.length ? [{ key: 'sourceReferenceImages', label: 'Rujukan sumber untuk semakan', type: 'gallery' }] : []),
     ]),
   }
 }

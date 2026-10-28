@@ -6,6 +6,7 @@
 
 import { findAnchors, readWithSpec } from './spec.mjs'
 import { BUILTIN_SPECS } from './specs.mjs'
+import {fixedLayoutMatches} from './fixed-layout-match.mjs'
 
 /** Every text field a layout claims to read, across all of its product kinds. */
 const textFields = spec => {
@@ -75,14 +76,18 @@ function mergeAugmentProducts(base, extras) {
     if (at >= 0) merged[at] = extra
     else merged.push(extra)
   }
-  return merged
+  return merged.sort((a,b)=>{
+    if(!a.__sourceAnchor||!b.__sourceAnchor)return 0
+    const dy=a.__sourceAnchor.y-b.__sourceAnchor.y
+    return Math.abs(dy)<.018?a.__sourceAnchor.x-b.__sourceAnchor.x:dy
+  })
 }
 
 /**
  * Picks the layout that best fits this page and reads it.
  * @returns { spec, products, warnings } or { spec: null } when nothing matches
  */
-export async function readWithRules(page, onProgress = () => {}, pageNo = null) {
+export async function readWithRules(page, onProgress = () => {}, pageNo = null, {sourceImage=page}={}) {
   // Record what EVERY layout made of the page, including the ones that found
   // nothing. When a read fails, "no layout matched" on its own is useless — the
   // counts say whether the page was not recognised at all, or recognised and then
@@ -94,7 +99,7 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null) 
   // pages by ingest; do not spend a paid vision call asking whether their
   // lifestyle photos are products.
   const noProduct = BUILTIN_SPECS.find(s => s.nonProductPages?.includes(pageNo))
-  if (noProduct) {
+  if (noProduct && await fixedLayoutMatches(sourceImage,noProduct,pageNo)) {
     return { spec: noProduct, products: [], anchors: [], warnings: [], report,
       noProducts: true, localEvidence: true }
   }
@@ -111,6 +116,8 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null) 
     const candidates = []
     for (const spec of round) {
       try {
+        if(spec.nonProductPages)continue
+        if(spec.anchor?.type==='fixed'&&!await fixedLayoutMatches(sourceImage,spec,pageNo))continue
         const anchors = findAnchors(page, { ...spec.anchor, pageNo })
         report.push({ title: spec.title, found: anchors.length })
         if (anchors.length) candidates.push({ spec, count: anchors.length })
@@ -131,6 +138,7 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null) 
         if (ruleReadIsUsable(result, spec)) {
           const augmentProducts = []
           for (const extra of BUILTIN_SPECS.filter(s => s.augment)) {
+            if(extra.anchor?.type==='fixed'&&!await fixedLayoutMatches(sourceImage,extra,pageNo))continue
             const extraAnchors = findAnchors(page, { ...extra.anchor, pageNo })
             if (!extraAnchors.length) continue
             const extraResult = await readWithSpec(page, { ...extra, anchor: { ...extra.anchor, pageNo } })

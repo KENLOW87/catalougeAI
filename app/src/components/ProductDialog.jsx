@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { TYPE_B, blankFinish } from '../lib/model.js'
 import { getCategory } from '../lib/categories/index.js'
-import { processBackground, modelReady } from '../lib/bgremove.js'
+import { processBackground } from '../lib/bgremove.js'
+import { beginActivity, recordImageUpload, activityStatus } from '../lib/activity.js'
 
 // One dialog for every category. The field list comes from the category
 // (`fields(product)`), so adding a category does not mean adding a dialog.
@@ -26,8 +27,13 @@ export default function ProductDialog({ categoryId, category: given, initial, on
   // in a sheet catalogue opened the LED form, asking for a colour, a length and a
   // dimension drawing that those products do not have.
   const category = given ?? getCategory(categoryId)
-  const fields = category.fields(p)
-  const set = (k, v) => setP(prev => ({ ...prev, [k]: v }))
+  const configuredFields = category.fields(p)
+  const fields = p.sourceReferences?.length && !configuredFields.some(f=>f.key==='sourceReferenceImages')
+    ? [...configuredFields,{key:'sourceReferenceImages',label:'Rujukan sumber untuk semakan',type:'gallery'}] : configuredFields
+  const set = (k, v) => setP(prev => ({ ...prev, [k]: v,
+    ...(k === 'drawing' ? { drawingPresentation: '', dimensionText: '', dimensionReferenceKind: null } : {}),
+    ...(k === 'photoTreatmentMode' && v === 'preserve-scene' && prev.photoOriginal ? { photo: prev.photoOriginal, photoTreatment: 'original-scene-v1' } : {}),
+  }))
 
   // Changing a LED product's type swaps which fields apply.
   const setType = t => setP(prev => ({
@@ -36,7 +42,11 @@ export default function ProductDialog({ categoryId, category: given, initial, on
 
   const pick = async (e, apply) => {
     const f = e.target.files?.[0]
-    if (f) apply(await readFile(f))
+    if (f) {
+      const jobId = recordImageUpload(f, `product-dialog:${p.name || categoryId}`)
+      try { apply(await readFile(f)); activityStatus(jobId, 'attached-original') }
+      catch (error) { activityStatus(jobId, 'failed', error.message); throw error }
+    }
     e.target.value = ''
   }
 
@@ -48,13 +58,16 @@ export default function ProductDialog({ categoryId, category: given, initial, on
   const [bgError, setBgError] = useState({})
   const isPhotoField = key => key === 'photo' || key === 'extra'
   const cleanBackground = async (key, dataUrl, apply) => {
+    const jobId = beginActivity('image.edit', `Remove background: ${p.name || categoryId} / ${key}`)
     setBgBusy(prev => new Set(prev).add(key))
     setBgError(prev => ({ ...prev, [key]: null }))
     try {
-      const result = await processBackground(dataUrl)
+      const result = await processBackground(dataUrl, { jobId })
       apply(result.dataUrl)
+      activityStatus(jobId, 'prepared-for-save')
       if (result.skipped) setBgError(prev => ({ ...prev, [key]: 'Background is already light, so the original photo was kept.' }))
     } catch (e) {
+      activityStatus(jobId, 'failed', e.message)
       setBgError(prev => ({ ...prev, [key]: `Could not remove the background: ${e.message}` }))
     } finally {
       setBgBusy(prev => { const next = new Set(prev); next.delete(key); return next })
@@ -97,15 +110,24 @@ export default function ProductDialog({ categoryId, category: given, initial, on
     if (f.type === 'image') {
       return (
         <label key={f.key}>{f.label} {f.hint && <span className="hint">{f.hint}</span>}
-          <input type="file" accept="image/*" onChange={e => pick(e, v => set(f.key, v))} />
+          <input type="file" accept="image/*" onChange={e => pick(e, v => {
+            set(f.key, v)
+            if (isPhotoField(f.key)) setP(prev => ({ ...prev, [`${f.key}Original`]: v }))
+          })} />
           {p[f.key] && <img className="thumb" src={p[f.key]} alt="" />}
+          {isPhotoField(f.key) && p[`${f.key}Original`] && (
+            <button type="button" className="link" onClick={() => setP(prev => ({
+              ...prev, [f.key]: prev[`${f.key}Original`],
+              ...(f.key === 'photo' ? { photoTreatmentMode: 'preserve-scene', photoTreatment: 'original-scene-v1' } : {}),
+            }))}>Restore original rectangular photo</button>
+          )}
           {isPhotoField(f.key) && p[f.key] && (
             <div className="bg-remove">
               <button type="button" className="link" disabled={bgBusy.has(f.key)}
                       onClick={() => cleanBackground(f.key, p[f.key], v => set(f.key, v))}>
                 {bgBusy.has(f.key)
-                  ? (modelReady() ? 'Removing background…' : 'Loading the background-removal model — this happens once…')
-                  : 'Remove background'}
+                  ? 'AI sedang mengasingkan produk…'
+                  : 'Asingkan produk sahaja (AI)'}
               </button>
               {bgError[f.key] && <span className="warn">{bgError[f.key]}</span>}
             </div>
@@ -114,7 +136,7 @@ export default function ProductDialog({ categoryId, category: given, initial, on
       )
     }
     if (f.type === 'gallery') {
-      const list = p[f.key] ?? []
+      const list = f.key === 'exampleImages' ? (p.examples ?? []).map(e => e.image) : f.key === 'sourceReferenceImages' ? (p.sourceReferences ?? []).map(e=>e.image) : p[f.key] ?? []
       if (!list.length) return null
       return (
         <div key={f.key} className="gallery-field">
@@ -174,7 +196,7 @@ export default function ProductDialog({ categoryId, category: given, initial, on
 
         <div className="modal-actions">
           <button onClick={onCancel}>Cancel</button>
-          <button className="primary" disabled={missing.length > 0} onClick={() => onSave(p)}>Save</button>
+          <button className="primary" disabled={missing.length > 0 || bgBusy.size > 0} onClick={() => onSave(p)}>Save</button>
         </div>
       </div>
     </div>

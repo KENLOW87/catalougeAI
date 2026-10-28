@@ -111,7 +111,11 @@ export function applyReconcile({ matched, missing, pdfOrder }, decisions = {}) {
     if (m) {
       // Taking the PDF's version keeps the existing product's id, so anything
       // referring to it still resolves.
-      inPdf.push(useDraft.has(d.id) ? { ...d, id: m.existing.id } : m.existing)
+      inPdf.push(useDraft.has(d.id) ? { ...d, id: m.existing.id,
+        ...(d.examples?{examples:d.examples.map(e=>({...e,ownerProductId:m.existing.id}))}:{}),
+        ...(m.existing.layoutPairGroup?{layoutPairGroup:m.existing.layoutPairGroup}:{}),
+        ...(m.existing.layoutFullRow?{layoutFullRow:true}:{}),
+        ...(m.existing.layoutRowGroup?{layoutRowGroup:m.existing.layoutRowGroup}:{}) } : m.existing)
     } else if (!skipAdded.has(d.id)) {
       inPdf.push(d)
     }

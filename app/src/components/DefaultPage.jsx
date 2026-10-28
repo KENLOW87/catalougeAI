@@ -1,5 +1,20 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Badge, Hit } from './bits.jsx'
+import { prepareDrawingDisplay } from '../lib/drawing-display.js'
+import { usageExamples, isDimensionReference, exampleHeading, examplesBesideProduct } from '../lib/product-layout.js'
+import { isOriginalProductCard } from '../lib/source-photo-match.js'
+
+function DrawingImage({ src }) {
+  const [prepared, setPrepared] = useState(null)
+  useEffect(() => {
+    let active = true
+    prepareDrawingDisplay(src).then(image => { if (active) setPrepared({ source:src, image }) })
+      .catch(() => { if (active) setPrepared({ source:src, image:src }) })
+    return () => { active = false }
+  }, [src])
+  const ready = prepared?.source === src
+  return <img src={ready ? prepared.image : src} data-drawing-pending={ready ? undefined : 'true'} alt="Dimension drawing" />
+}
 
 // The default catalogue page.
 //
@@ -11,32 +26,103 @@ import { Badge, Hit } from './bits.jsx'
 // It is deliberately plain. It is not trying to reproduce a specific design; it is
 // trying to be a correct, consistent catalogue page with no setup at all.
 
-function Cell({ p, editable, onEdit, onDelete }) {
+function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand = false, tiledDisplays = [] }) {
+  const dimensionsOnly = p.drawingPresentation === 'dimensions' && p.dimensionText
+  const showDrawing = p.drawing && !dimensionsOnly
+  const inCell = example => !supplementaryInBand || (example.displayPlacement?.mode === 'beside-product' && !tiledDisplays.includes(example.image))
+  const candidates = usageExamples(p).filter(inCell)
+  const [checkedExamples, setCheckedExamples] = useState(null)
+  const checkKey = p.photoOriginal || p.photo
+  useEffect(() => {
+    let active = true
+    const list = usageExamples(p).filter(inCell).filter(example => !isDimensionReference(example))
+    Promise.all(list.map(async example => ({ example, duplicate: await isOriginalProductCard(p.photoOriginal || (p.photoTreatmentMode === 'preserve-scene' ? p.photo : null), example.image) })))
+      .then(results => { if(active)setCheckedExamples({ key:checkKey, source:p.examples, extra:p.extra, examples:results.filter(r=>!r.duplicate).map(r=>r.example) }) })
+    return () => {active=false}
+  }, [checkKey,p.examples,p.extra,p.extraRole,supplementaryInBand,tiledDisplays.join('|')])
+  const checked = checkedExamples?.key === checkKey && checkedExamples?.source === p.examples && checkedExamples?.extra === p.extra
+  const examples = checked ? checkedExamples.examples : candidates.filter(example => !isDimensionReference(example))
+  const sideBySide = examplesBesideProduct(examples)
+  const technicalPair = p.layoutPairGroup === 'aluminium-corners' && showDrawing && !examples.length
+  const exampleColumns = Math.min(sideBySide ? 2 : 4, examples.length)
   return (
-    <div className="dp-item">
+    <div className={`dp-item ${examples.length ? 'dp-item--examples' : ''} ${sideBySide ? 'dp-item--display-examples' : ''} ${technicalPair ? 'dp-item--technical-pair' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}
+         data-examples-pending={!checked && candidates.length ? 'true' : undefined}
+         style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
-      <div className={`dp-visuals ${p.drawing ? 'dp-visuals--paired' : ''}`}>
+      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''}`}>
         <div className="dp-photo">
           {p.photo
             ? <img src={p.photo} alt={p.name} />
             : <span className="dp-missing">no photo</span>}
         </div>
-        {p.drawing && (
+        {showDrawing && (
           <div className="dp-drawing-frame">
-            <img src={p.drawing} alt="Dimension drawing" />
+            {examples.length ? <img src={p.drawing} alt="Dimension drawing" /> : <DrawingImage src={p.drawing} />}
           </div>
         )}
       </div>
+      {examples.length > 0 && (
+        <div className="dp-examples">
+          <div className="dp-examples-title">{exampleHeading(examples)}</div>
+          <div className="dp-examples-grid" style={{ gridTemplateColumns: `repeat(${exampleColumns}, minmax(0, 1fr))` }}>
+            {examples.map((example, i) => (
+              <figure key={i}>
+                <img src={example.image} alt={example.caption || `${p.name} — gambar tambahan ${i + 1}`} />
+                {example.caption && <figcaption>{example.caption}</figcaption>}
+              </figure>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="dp-name">{p.name}</div>
-      {(p.subtitle || p.third) && (
-        <div className="dp-sub">{[p.subtitle, p.third].filter(Boolean).join(' · ')}</div>
+      {(dimensionsOnly || p.subtitle || p.third) && (
+        <div className="dp-sub">{[dimensionsOnly ? p.dimensionText : p.subtitle, p.third].filter(Boolean).join(' · ')}</div>
       )}
       {editable && <Hit product={p} onEdit={onEdit} onDelete={onDelete} />}
     </div>
   )
 }
 
-export default function DefaultPage({ page, editable, onEdit, onDelete, category }) {
+function SourceSupportBand({ products, compact = false }) {
+  const originalEntries=products.map(p=>({p,examples:usageExamples(p).filter(e=>!isDimensionReference(e)&&e.displayPlacement?.mode!=='beside-product')}))
+    .filter(({p,examples})=>p.supportStrip||examples.length)
+  const before = originalEntries.flatMap(({p,examples}) => {
+    const selected = examples.filter(e=>e.origin==='manual-display'&&e.displayPlacement?.order==='before')
+    return selected.length ? [{p:{...p,supportStrip:null,supportCaption:null},examples:selected,key:`${p.id}:before`}] : []
+  })
+  const after = originalEntries.map(({p,examples})=>({p,examples:examples.filter(e=>!(e.origin==='manual-display'&&e.displayPlacement?.order==='before')),key:p.id}))
+    .filter(({p,examples})=>p.supportStrip||examples.length)
+  const entries = [...before,...after]
+  return <div className={`dp-source-support ${compact?'dp-source-support--compact':''}`} style={compact?undefined:{gridTemplateRows:`repeat(${entries.length}, minmax(0, 1fr))`}}>
+    {entries.map(({p,examples,key})=><section className="dp-source-support-entry" key={key} data-support-owner={p.name}
+      style={p.supportStrip&&examples.some(e=>e.origin==='manual-display')?{gridTemplateRows:compact?'4mm auto 36mm':'4mm minmax(0,1fr) minmax(0,1fr)'}:undefined}>
+      <div className="dp-source-support-title">{p.supportCaption||`${p.name}${p.supportStrip?'':` — ${exampleHeading(examples)}`}`}</div>
+      {p.supportStrip && <img className="dp-source-support-strip" src={p.supportStrip} alt={`${p.name} — penerangan asal`} />}
+      {(!p.supportStrip || examples.some(e=>e.origin==='manual-display')) &&
+        <div className="dp-source-support-gallery" style={{gridTemplateColumns:`repeat(${Math.min(4,examples.length)}, minmax(0, 1fr))`}}>
+          {examples.filter(e=>!p.supportStrip||e.origin==='manual-display').map((e,i)=><figure key={i}><img src={e.image} alt={e.caption||`${p.name} — gambar sokongan ${i+1}`}/>{e.caption&&<figcaption>{e.caption}</figcaption>}</figure>)}
+        </div>}
+    </section>)}
+  </div>
+}
+
+function SourceGroupCards({ row, columns, editable, onEdit, onDelete, highlight }) {
+  // Use an existing empty grid cell beside the final product. Full source rows
+  // retain their four columns; elsewhere the display shares its product panel.
+  const last = row.at(-1)
+  const empty = (columns - row.length % columns) % columns
+  const tiles = usageExamples(last).filter(e => e.displayPlacement?.mode === 'beside-product').slice(0, empty)
+  return <div className="dp-source-group-cards" style={{gridTemplateColumns:`repeat(${columns}, minmax(0,1fr))`,gridTemplateRows:`repeat(${Math.ceil(row.length/columns)}, minmax(0,1fr))`}}>
+    {row.map(p=><Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} highlighted={highlight.includes(p.id)} supplementaryInBand tiledDisplays={p.id===last.id?tiles.map(e=>e.image):[]}/>)}
+    {tiles.map((e,i)=><figure className="dp-inline-display" key={e.displayId||i} data-display-anchor={last.id}>
+      <img src={e.image} alt={`Display — ${last.name}`} />
+      <figcaption>{e.caption||`Display — ${last.name}`}</figcaption>
+    </figure>)}
+  </div>
+}
+
+export default function DefaultPage({ page, editable, onEdit, onDelete, category, highlight = [] }) {
   const columns = category?.columns ?? 4
   const headerH = category?.headerH ?? 24
   const flowTop = category?.flowTop ?? headerH + 4
@@ -74,13 +160,15 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
 
       <div className="dp-flow" style={{ top: `${flowTop}mm` }}>
         {page.rows.map((row, i) => (
-          <div className={`dp-row ${row.length === 1 && row[0].drawing ? 'dp-row--single' : ''}`} key={i}
-               style={{ gridTemplateColumns: row.length === 1 && row[0].drawing ? '1fr' : `repeat(${columns}, 1fr)`, height: `${rowH}mm` }}>
-            {row.map(p => (
-              <Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} />
+          <div className={`dp-row ${row.sourceGroup ? 'dp-row--source-group' : ''} ${row.sourceGroupBundle?'dp-row--source-bundle':''} ${row.supportFor ? 'dp-row--support' : ''} ${row.length === 1 && row[0].drawing ? 'dp-row--single' : ''}`} key={i}
+               style={{ gridTemplateColumns: row.sourceGroupBundle?'minmax(0,1fr)':`repeat(${Math.max(1, Math.min(columns, row.length))}, minmax(0, 1fr))`, height: `${row.sourceGroupBundle ? 289-flowTop : rowH}mm` }}>
+            {row.sourceGroupBundle ? <div className="dp-source-group-bundle">
+              <SourceGroupCards row={row} columns={columns} editable={editable} onEdit={onEdit} onDelete={onDelete} highlight={highlight}/>
+              <SourceSupportBand products={row.supportForAll||row} compact/>
+            </div> : row.supportFor ? <SourceSupportBand products={row.supportFor}/> : row.map(p => (
+              <Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
+                    highlighted={highlight.includes(p.id)} supplementaryInBand={Boolean(row.sourceGroup)} />
             ))}
-            {!(row.length === 1 && row[0].drawing) &&
-              Array.from({ length: columns - row.length }).map((_, k) => <div key={`s${k}`} />)}
           </div>
         ))}
       </div>
