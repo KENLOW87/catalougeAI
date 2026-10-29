@@ -542,6 +542,12 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
   const dir = await mkdtemp(join(tmpdir(), 'catalogue-ingest-'))
   const warnings = []
   const unread = []        // per-page evidence, used only if the whole PDF yields nothing
+  // Accessories (March 2026) is one mixed catalogue whose first page happens to
+  // match the built-in LED reader. Keep the whole upload together instead of
+  // sending page 1 to Accessories ~ LED and the remaining profile rows to a new
+  // catalogue. The source layout remains in each product; only the destination
+  // grouping is unified.
+  const singleAccessoriesCatalogue = /accessories\s*\(?(?:march|mac)\b/i.test(filename)
   let chrome = null        // the page header, lifted from the source PDF
   let client = null
   const getClient = () => {
@@ -897,6 +903,13 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       header: chrome?.text ?? '',
       names,
       filename,
+    }
+    if (singleAccessoriesCatalogue) {
+      for (const p of products) p.categoryId = 'accessories'
+      routing.suggestedCategoryId = null
+      routing.suggestedTitle = 'Accessories'
+      routing.confident = false
+      routing.evidence = [`mixed Accessories PDF kept in one catalogue`]
     }
     // On the record, because "where did this go and why" is the question asked
     // after every surprising import — and answering it from memory is guesswork.

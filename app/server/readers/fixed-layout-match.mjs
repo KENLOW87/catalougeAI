@@ -24,10 +24,15 @@ export async function fixedLayoutMatches(page,spec,pageNo,{readText=async image=
  }
  if(spec.anchor?.type!=='fixed')return true
  if(!spec.anchor.pages?.includes(pageNo))return false
+  const mm=page.width/210
+  if(spec.anchor.headerEvidence){
+   const header=normalize(await readText(crop(page,0,0,page.width,Math.round(28*mm))))
+   if(!spec.anchor.headerEvidence.test(header))return false
+   if(spec.anchor.trustHeader)return true
+  }
  const nameField=spec.kinds?.[0]?.fields?.find(f=>f.key==='name')
  const names=nameField?.valueByAnchor
  if(!names?.length)return false
- const mm=page.width/210
  for(let i=0;i<names.length;i++){
   const b=spec.anchor.boxes[i]
   const code=nameField.codeByAnchor?.[i]||names[i].match(/\b[A-Z]+[- ]?\d+[A-Z]?\b/i)?.[0]

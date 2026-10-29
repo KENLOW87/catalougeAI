@@ -11,7 +11,92 @@
 // They are not post-import overrides keyed by the catalogue's product names.
 const rect=(x,y,w,h)=>({x:x*210/827,y:y*210/827,w:w*210/827,h:h*210/827})
 const usage=(x,y,w,h,caption='')=>({box:rect(x,y,w,h),caption,role:'usage'})
+
+// Accessories (March 2026) is a mixed source PDF: page 1 is the existing LED
+// layout, while pages 2-12 are hand-laid profile rows (PVC edge, Foam Panel,
+// Stainless Steel and Brass Flat Bar). Keep those rows local and deterministic.
+// The product names/sizes are printed in each row; the fixed matcher confirms the
+// row before these source crops are adopted. This deliberately creates the generic
+// Accessories catalogue instead of pretending every profile is an LED product.
+const accessoryPage = (page, rows, headerEvidence = null) => ({
+  id: `accessories-march-${page}`,
+  title: `Accessories March 2026 page ${page}`,
+  category: 'accessories',
+  builtin: true,
+  anchor: { type: 'fixed', pages: [page], headerEvidence, trustHeader: Boolean(headerEvidence), boxes: rows.map(r => ({ x: 0, y: r.y, w: 210, h: r.h })) },
+  // These are source-declared display/installation images, not extra products.
+  // Keep them attached to the row that owns them so the renderer can place them
+  // beside/under the product without losing the original scene.
+  kinds: [{ id: `accessories-row-${page}`, fields: [
+    { key: 'name', type: 'text', required: true, valueByAnchor: rows.map(r => r.name), box: { x: 0, y: 0, w: 210, h: 1 } },
+    { key: 'subtitle', type: 'text', required: true, valueByAnchor: rows.map(r => r.size), box: { x: 0, y: 0, w: 210, h: 1 } },
+    { key: 'third', type: 'text', valueByAnchor: rows.map(r => r.third ?? ''), box: { x: 0, y: 0, w: 210, h: 1 } },
+    { key: 'photo', type: 'photo', source: true, boxByAnchor: rows.map(r => r.photo) },
+    { key: 'drawing', type: 'lineart', source: true, boxByAnchor: rows.map(r => r.drawing) },
+  ], examplesByAnchor: rows.map(r => r.examples ?? []) }],
+})
+
+const ACCESSORIES_MARCH_SPECS = [
+  accessoryPage(2, [
+    { y: 29, h: 62, name: 'H Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 48 }, drawing: { x: 10, y: 27, w: 43, h: 27 } },
+    { y: 91, h: 62, name: 'T Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 48 }, drawing: { x: 10, y: 27, w: 43, h: 27 }, examples: [usage(650, 330, 120, 82, 'Pemasangan T Profile')] },
+    { y: 153, h: 68, name: 'END Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 53 }, drawing: { x: 10, y: 27, w: 43, h: 31 } },
+    { y: 221, h: 76, name: 'W Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 58 }, drawing: { x: 10, y: 28, w: 43, h: 35 } },
+  ], /PVCMARBLE/),
+  accessoryPage(3, [
+    { y: 29, h: 71, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
+    { y: 100, h: 75, name: 'L Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 36 } },
+    { y: 175, h: 72, name: 'L Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 36 } },
+  ], /PVCMARBLE/),
+  accessoryPage(4, [
+    { y: 29, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
+    { y: 100, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
+    { y: 171, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
+    { y: 234, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
+  ], /FOAMPANEL/),
+  accessoryPage(5, [
+    { y: 29, h: 82, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 37 } },
+    { y: 111, h: 88, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 42 } },
+  ], /FOAMPANEL/),
+  accessoryPage(6, [
+    { y: 29, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 } },
+    { y: 101, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 } },
+    { y: 173, h: 124, name: 'Aluminum End Bend Features', size: `Size : 9'5"`, third: 'Thickness : 5mm / 8mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 105 }, drawing: { x: 10, y: 28, w: 53, h: 70 } },
+  ], /FOAMPANEL/),
+  accessoryPage(7, [
+    { y: 29, h: 128, name: 'T Micro-Seam Aluminium Black', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 108, y: 22, w: 88, h: 73 }, drawing: { x: 10, y: 28, w: 60, h: 45 } },
+    { y: 157, h: 140, name: 'H Micro-Seam Aluminium Silver', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 108, y: 22, w: 88, h: 80 }, drawing: { x: 10, y: 28, w: 60, h: 52 } },
+  ], /FOAMPANEL/),
+  accessoryPage(8, [
+    { y: 29, h: 66, name: 'Flat Bar', size: 'Size : 20mm x 3000mm', third: 'Thickness : 0.5mm', photo: { x: 75, y: 10, w: 130, h: 51 }, drawing: { x: 34, y: 7, w: 34, h: 47 } },
+    { y: 95, h: 66, name: 'Flat Bar', size: 'Size : 25mm x 3000mm', third: 'Thickness : 0.5mm', photo: { x: 75, y: 10, w: 130, h: 51 }, drawing: { x: 34, y: 7, w: 34, h: 47 } },
+    { y: 161, h: 68, name: 'Flat Bar', size: 'Size : 30mm x 3000mm', third: 'Thickness : 0.5mm', photo: { x: 75, y: 10, w: 130, h: 53 }, drawing: { x: 34, y: 7, w: 34, h: 49 } },
+    { y: 229, h: 68, name: 'Flat Bar', size: 'Size : 80mm x 3000mm', third: 'Thickness : 0.5mm', photo: { x: 75, y: 10, w: 130, h: 53 }, drawing: { x: 34, y: 7, w: 34, h: 49 } },
+  ], /STEEL/),
+  accessoryPage(9, [
+    { y: 29, h: 76, name: 'T Profile', size: 'Size : 10mm x 3000mm', third: 'Thickness : 0.5mm', photo: { x: 75, y: 8, w: 130, h: 60 }, drawing: { x: 34, y: 8, w: 34, h: 48 } },
+    { y: 105, h: 86, name: 'U CHANNEL Profile', size: 'Size : 10mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 70 }, drawing: { x: 34, y: 8, w: 34, h: 58 } },
+    { y: 191, h: 106, name: 'U CHANNEL Profile', size: 'Size : 20mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 84 }, drawing: { x: 34, y: 8, w: 34, h: 67 } },
+  ], /STEEL/),
+  accessoryPage(10, [
+    { y: 29, h: 88, name: 'L Profile', size: 'Size : 10mm x 3000mm', third: '', photo: { x: 75, y: 10, w: 130, h: 63 }, drawing: { x: 20, y: 22, w: 40, h: 40 } },
+    { y: 117, h: 88, name: 'L Profile', size: 'Size : 15mm x 3000mm', third: '', photo: { x: 75, y: 10, w: 130, h: 63 }, drawing: { x: 20, y: 22, w: 40, h: 40 } },
+    { y: 205, h: 92, name: 'L Profile', size: 'Size : 25mm x 3000mm', third: '', photo: { x: 75, y: 10, w: 130, h: 68 }, drawing: { x: 20, y: 22, w: 40, h: 43 } },
+  ], /STEEL/),
+  accessoryPage(11, [
+    { y: 29, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 20mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 20, y: 22, w: 40, h: 42 } },
+    { y: 112, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 10mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 20, y: 22, w: 40, h: 42 } },
+    { y: 195, h: 102, name: 'Wing Flat Bar', size: 'Size : 100mm x 3000mm', third: 'Thickness : 1mm', photo: { x: 42, y: 52, w: 160, h: 42 }, drawing: { x: 100, y: 8, w: 80, h: 34 } },
+  ], /STEEL/),
+  accessoryPage(12, [
+    { y: 29, h: 89, name: 'BRASS FLAT BAR - BFB 01', size: 'Size : 10mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 20, y: 34, w: 45, h: 30 } },
+    { y: 118, h: 89, name: 'BRASS FLAT BAR - BFB 02', size: 'Size : 5mm x 3000mm', third: 'Thickness : 5mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 20, y: 34, w: 45, h: 30 } },
+    { y: 207, h: 90, name: 'BRASS FLAT BAR - BFB 03', size: 'Size : 15mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 61 }, drawing: { x: 20, y: 34, w: 45, h: 30 } },
+  ], /BRASSFLATBAR/),
+]
+
 export const BUILTIN_SPECS = [
+  ...ACCESSORIES_MARCH_SPECS,
   {
     // These pages are catalogue material, but contain no product cards. They
     // stay in the exported flow as whole pages and must never trigger AI OCR.

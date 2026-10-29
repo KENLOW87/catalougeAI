@@ -8,6 +8,12 @@ export function productSeries(product) {
 }
 
 export function orderProductFamilies(items) {
+  // A recognised source PDF is already the authority for its sequence. The
+  // Accessories March file intentionally prints LED-160/170/195/508/15/601/08
+  // in that order; natural family sorting would silently move LED-08 and LED-15
+  // to the front. Keep that source order for this mixed import while retaining
+  // natural sorting for manually-added/product-series records elsewhere.
+  if (items.some(p => p.categoryId === 'accessories' && Number.isFinite(p.sourcePage))) return items
   const output=[]
   const block=items=>{
     const sourceGroups=new Map(),families=new Map()
