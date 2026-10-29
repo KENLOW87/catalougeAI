@@ -108,9 +108,14 @@ export function defaultCategoryFor(parent, chrome = null) {
                 ...sourceProducts.filter(p => p.finishes?.length > 1 || p.variants?.length > 1 || /^led\s*-\s*0?8$/i.test(p.name || '')).map(p => [p]),
               ].filter(row => row.length)
             : sourceProducts.map(p => [p])
-          const sourceGap = 5
-          const sourceRowH = Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
-          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, columns: sourcePage === 1 ? 6 : undefined, sourcePage })
+          const sourceGap = sourcePage === 1 ? 3 : 5
+          // The imported LED source page has a normal product row followed by
+          // the LED-08 variation row. Equal halves leave a large artificial
+          // void between the photos, drawings and captions, so keep both rows
+          // compact while preserving the source page and its ordering.
+          const sourceRowHeights = sourcePage === 1 ? [94, 102] : null
+          const sourceRowH = sourceRowHeights?.[0] ?? Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
+          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, rowHeights: sourceRowHeights, rowGap: sourceGap, columns: sourcePage === 1 ? 6 : undefined, sourcePage })
           continue
         }
         // Keep a row explicitly identified in the source together. Supporting

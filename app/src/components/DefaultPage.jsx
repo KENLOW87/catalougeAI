@@ -171,7 +171,7 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
       <div className="dp-flow" style={{ top: `${flowTop}mm` }}>
         {page.rows.map((row, i) => (
           <div className={`dp-row ${row.sourceGroup ? 'dp-row--source-group' : ''} ${row.sourceGroupBundle?'dp-row--source-bundle':''} ${row.supportFor ? 'dp-row--support' : ''} ${row.length === 1 && row[0].drawing ? 'dp-row--single' : ''}`} key={i}
-               style={{ gridTemplateColumns: row.sourceGroupBundle?'minmax(0,1fr)':`repeat(${Math.max(1, Math.min(columns, row.length))}, minmax(0, 1fr))`, height: `${row.sourceGroupBundle ? 289-flowTop : pageRowH}mm` }}>
+               style={{ gridTemplateColumns: row.sourceGroupBundle?'minmax(0,1fr)':`repeat(${Math.max(1, Math.min(columns, row.length))}, minmax(0, 1fr))`, height: `${row.sourceGroupBundle ? 289-flowTop : (page.rowHeights?.[i] ?? pageRowH)}mm`, marginBottom: `${page.rowGap ?? 5}mm` }}>
             {row.sourceGroupBundle ? <div className="dp-source-group-bundle">
               <SourceGroupCards row={row} columns={columns} editable={editable} onEdit={onEdit} onDelete={onDelete} highlight={highlight}/>
               <SourceSupportBand products={row.supportForAll||row} compact/>
