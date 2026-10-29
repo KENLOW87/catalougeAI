@@ -42,6 +42,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
   }, [checkKey,p.examples,p.extra,p.extraRole,supplementaryInBand,tiledDisplays.join('|')])
   const checked = checkedExamples?.key === checkKey && checkedExamples?.source === p.examples && checkedExamples?.extra === p.extra
   const examples = checked ? checkedExamples.examples : candidates.filter(example => !isDimensionReference(example))
+  const variants = (p.finishes ?? p.variants ?? []).filter(v => v?.photo)
   const sideBySide = examplesBesideProduct(examples)
   const technicalPair = p.layoutPairGroup === 'aluminium-corners' && showDrawing && !examples.length
   const exampleColumns = Math.min(sideBySide ? 2 : 4, examples.length)
@@ -50,9 +51,16 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
-      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''}`}>
+      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''}`}>
         <div className="dp-photo">
-          {p.photo
+          {variants.length ? (
+            <div className="dp-variants" aria-label={`${p.name} variations`}>
+              {variants.map((v, i) => <figure key={v.id || i}>
+                <img src={v.photo} alt={v.name || `${p.name} variation ${i + 1}`} />
+                {v.name && <figcaption>{v.name}</figcaption>}
+              </figure>)}
+            </div>
+          ) : p.photo
             ? <img src={p.photo} alt={p.name} />
             : <span className="dp-missing">no photo</span>}
         </div>
