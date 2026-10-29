@@ -534,7 +534,9 @@ export default function App() {
           {ordered.map((p, i) => (
             <li key={p.id} className={highlight.includes(p.id) ? 'flagged' : ''}>
               <span className="n">{i + 1}</span>
-              <button className="nm" title={`Show ${p.name}`} onClick={() => setHighlight([p.id])}>{p.name}</button>
+              <button className="nm" title={`Show ${p.name}`} onClick={() => setHighlight([p.id])}>
+                {[p.name, p.subtitle || p.size || p.third].filter(Boolean).join(' · ')}
+              </button>
               <span className="tag">{category.kindLabel(p)}</span>
               <span className="mv">
                 <button onClick={() => move(p.id, -1)} title="Move up">↑</button>

@@ -88,6 +88,28 @@ export function defaultCategoryFor(parent, chrome = null) {
           continue                                      // …then the page, on its own
         }
         const product = { ...item, slot: ++slot }
+        // Recognised Accessories pages are already paginated by the source PDF.
+        // Keep each source page together and size its rows to the number of
+        // printed products instead of letting the generic drawing rule turn it
+        // into two oversized cards per page.
+        if (product.categoryId === 'accessories' && Number.isInteger(product.sourcePage)) {
+          const sourcePage = product.sourcePage
+          const sourceProducts = [product]
+          while (itemIndex + 1 < items.length) {
+            const next = items[itemIndex + 1]
+            if (!next || next.isPage || next.categoryId !== 'accessories' || next.sourcePage !== sourcePage) break
+            sourceProducts.push({ ...next, slot: ++slot })
+            itemIndex++
+          }
+          flushPage()
+          const sourceRows = sourcePage === 1
+            ? Array.from({ length: Math.ceil(sourceProducts.length / 6) }, (_, i) => sourceProducts.slice(i * 6, i * 6 + 6))
+            : sourceProducts.map(p => [p])
+          const sourceGap = 5
+          const sourceRowH = Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
+          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, sourcePage })
+          continue
+        }
         // Keep a row explicitly identified in the source together. Supporting
         // material occupies a shared band beneath the cards, not extra product
         // rows. This rule uses source metadata, never a product-name guess.
