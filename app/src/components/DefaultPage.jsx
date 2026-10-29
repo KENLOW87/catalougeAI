@@ -144,16 +144,27 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
   // row template instead of silently sending them through the generic grid.
   const pvcProducts = page.rows.flat()
   const pvcSourcePage = pvcProducts.length > 0 && pvcProducts.every(p => {
-    const sourceSeries = p?.series || p?.third || p?.subtitle || ''
+    const sourceSeries = [p?.series, p?.third, p?.subtitle, p?.size].filter(Boolean).join(' ')
     const sourceVariants = p?.variants ?? p?.finishes
-    return Array.isArray(sourceVariants) && sourceVariants.length > 0 && /pvc\s*marble/i.test(String(sourceSeries))
+    return Boolean(p?.categoryId === 'accessories' && p?.sourcePage >= 2 && (p?.photo || (Array.isArray(sourceVariants) && sourceVariants.length)) && /pvc\s*marble/i.test(String(sourceSeries)))
   })
   if (pvcSourcePage) {
-    const pvcRows = pvcProducts.map(p => ({ ...p,
-      size: p.size ?? p.subtitle ?? '',
+    const pvcRows = pvcProducts.map(p => {
+      const sourceVariants = p.variants ?? p.finishes ?? []
+      const variants = sourceVariants.length
+        ? sourceVariants
+        : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : [])
+      const extra = typeof p.extra === 'string'
+        ? p.extra
+        : (p.extra?.image || p.extra?.photo || p.examples?.find(example => example?.image)?.image || null)
+      const rawSize = p.size ?? p.subtitle ?? ''
+      return { ...p,
+      size: String(rawSize).replace(/^size\s*:\s*/i, ''),
       series: p.series || p.third || 'PVC Marble',
-      variants: p.variants ?? p.finishes ?? [],
-    }))
+      variants,
+      extra,
+      }
+    })
     return <PvcPage page={{ ...page, rows: pvcRows }} editable={editable}
       onEdit={onEdit} onDelete={onDelete} highlight={highlight} />
   }
