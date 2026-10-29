@@ -26,7 +26,7 @@ function DrawingImage({ src }) {
 // It is deliberately plain. It is not trying to reproduce a specific design; it is
 // trying to be a correct, consistent catalogue page with no setup at all.
 
-function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand = false, tiledDisplays = [], stackedVisuals = false }) {
+function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand = false, tiledDisplays = [], stackedVisuals = false, featuredVisuals = false }) {
   const dimensionsOnly = p.drawingPresentation === 'dimensions' && p.dimensionText
   const showDrawing = p.drawing && !dimensionsOnly
   const inCell = example => !supplementaryInBand || (example.displayPlacement?.mode === 'beside-product' && !tiledDisplays.includes(example.image))
@@ -51,7 +51,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
-      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''} ${stackedVisuals ? 'dp-visuals--stacked' : ''}`}>
+      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''} ${stackedVisuals ? 'dp-visuals--stacked' : ''} ${featuredVisuals ? 'dp-visuals--featured' : ''}`}>
         <div className="dp-photo">
           {variants.length ? (
             <div className="dp-variants" aria-label={`${p.name} variations`}>
@@ -131,7 +131,7 @@ function SourceGroupCards({ row, columns, editable, onEdit, onDelete, highlight 
 }
 
 export default function DefaultPage({ page, editable, onEdit, onDelete, category, highlight = [] }) {
-  const columns = category?.columns ?? 4
+  const columns = page.columns ?? category?.columns ?? 4
   const headerH = category?.headerH ?? 24
   const flowTop = category?.flowTop ?? headerH + 4
   const rowH = category?.rowH ?? 118
@@ -177,7 +177,7 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
               <SourceSupportBand products={row.supportForAll||row} compact/>
             </div> : row.supportFor ? <SourceSupportBand products={row.supportFor}/> : row.map(p => (
               <Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
-                    highlighted={highlight.includes(p.id)} supplementaryInBand={Boolean(row.sourceGroup)} stackedVisuals={stackedSourcePage} />
+                    highlighted={highlight.includes(p.id)} supplementaryInBand={Boolean(row.sourceGroup)} stackedVisuals={stackedSourcePage && !((p.finishes?.length > 1) || (p.variants?.length > 1) || /^led\s*-\s*0?8$/i.test(p.name || ''))} featuredVisuals={stackedSourcePage && ((p.finishes?.length > 1) || (p.variants?.length > 1) || /^led\s*-\s*0?8$/i.test(p.name || ''))} />
             ))}
           </div>
         ))}

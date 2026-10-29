@@ -233,6 +233,8 @@
 .dp-visuals--variants { grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); }
 .dp-visuals--stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.35fr) minmax(0, .65fr); }
 .dp-visuals--stacked .dp-photo, .dp-visuals--stacked .dp-drawing-frame { border: 0; padding: 0; }
+.dp-visuals--featured { grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); grid-template-rows: minmax(0, 1fr); }
+.dp-visuals--featured .dp-photo, .dp-visuals--featured .dp-drawing-frame { border: 0; padding: 0; }
 .dp-row--single .dp-visuals--paired { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 /* Each visual gets a quiet frame. The image itself is always contain-sized: the
    frame may shrink it to fit, but it can never crop the source rectangle. */

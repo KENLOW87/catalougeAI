@@ -103,11 +103,14 @@ export function defaultCategoryFor(parent, chrome = null) {
           }
           flushPage()
           const sourceRows = sourcePage === 1
-            ? Array.from({ length: Math.ceil(sourceProducts.length / 6) }, (_, i) => sourceProducts.slice(i * 6, i * 6 + 6))
+            ? [
+                sourceProducts.filter(p => !(p.finishes?.length > 1 || p.variants?.length > 1 || /^led\s*-\s*0?8$/i.test(p.name || ''))),
+                ...sourceProducts.filter(p => p.finishes?.length > 1 || p.variants?.length > 1 || /^led\s*-\s*0?8$/i.test(p.name || '')).map(p => [p]),
+              ].filter(row => row.length)
             : sourceProducts.map(p => [p])
           const sourceGap = 5
           const sourceRowH = Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
-          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, sourcePage })
+          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, columns: sourcePage === 1 ? 6 : undefined, sourcePage })
           continue
         }
         // Keep a row explicitly identified in the source together. Supporting
