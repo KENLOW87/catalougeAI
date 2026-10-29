@@ -34,10 +34,12 @@ function Row({ p, editable, onEdit, onDelete, highlighted }) {
         {p.drawing && <img className="pvc-drawing" src={p.drawing} alt="" />}
       </div>
 
-      <div className="pvc-right">
-        <div className="pvc-variants">
-          {(p.variants ?? []).map(v => <Variant key={v.id} v={v} />)}
-        </div>
+      <div className={`pvc-right ${p.sourceComposite ? `pvc-right--composite ${p.sourceTall ? 'pvc-right--composite-tall' : ''}` : ''}`}>
+        {p.sourceComposite
+          ? <img className="pvc-source-photo" src={p.photo} alt="" />
+          : <div className="pvc-variants">
+              {(p.variants ?? []).map(v => <Variant key={v.id} v={v} />)}
+            </div>}
         {p.extra && <img className="pvc-extra" src={p.extra} alt="" />}
       </div>
 

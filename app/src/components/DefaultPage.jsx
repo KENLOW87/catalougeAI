@@ -149,20 +149,22 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
     return Boolean(p?.categoryId === 'accessories' && p?.sourcePage >= 2 && (p?.photo || (Array.isArray(sourceVariants) && sourceVariants.length)) && /pvc\s*marble/i.test(String(sourceSeries)))
   })
   if (pvcSourcePage) {
-    const pvcRows = pvcProducts.map(p => {
+    const pvcRows = pvcProducts.map((p, index) => {
       const sourceVariants = p.variants ?? p.finishes ?? []
       const variants = sourceVariants.length
         ? sourceVariants
         : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : [])
       const extra = typeof p.extra === 'string'
         ? p.extra
-        : (p.extra?.image || p.extra?.photo || p.examples?.find(example => example?.image)?.image || null)
+        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null)
       const rawSize = p.size ?? p.subtitle ?? ''
       return { ...p,
       size: String(rawSize).replace(/^size\s*:\s*/i, ''),
       series: p.series || p.third || 'PVC Marble',
       variants,
       extra,
+      sourceComposite: !sourceVariants.length && Boolean(p.photo),
+      sourceTall: !sourceVariants.length && Boolean(p.photo) && page.sourcePage === 3 && index === 1,
       }
     })
     return <PvcPage page={{ ...page, rows: pvcRows }} editable={editable}
