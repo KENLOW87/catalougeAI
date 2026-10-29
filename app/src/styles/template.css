@@ -249,7 +249,7 @@
 }
 .dp-variants { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; align-items: center; gap: 1.5mm; }
 .dp-variants figure { flex: 1 1 0; min-width: 0; min-height: 0; height: 100%; margin: 0; display: grid; grid-template-rows: minmax(0, 1fr) 5.5mm; }
-.dp-variants img { width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 3mm; box-sizing: border-box; object-fit: contain; }
+.dp-variants img { display: block; width: 100%; height: auto; max-height: 100%; min-width: 0; min-height: 0; aspect-ratio: 1.55; padding: 3mm; box-sizing: border-box; object-fit: contain; align-self: center; }
 .dp-variants figcaption { overflow: hidden; text-align: center; font-size: 3.8mm; line-height: 5mm; white-space: nowrap; text-overflow: ellipsis; }
 .dp-drawing-frame img { mix-blend-mode: multiply; }
 .dp-examples { flex: none; margin-top: 2mm; }
