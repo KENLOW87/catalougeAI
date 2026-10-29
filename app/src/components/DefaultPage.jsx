@@ -26,7 +26,7 @@ function DrawingImage({ src }) {
 // It is deliberately plain. It is not trying to reproduce a specific design; it is
 // trying to be a correct, consistent catalogue page with no setup at all.
 
-function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand = false, tiledDisplays = [] }) {
+function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand = false, tiledDisplays = [], stackedVisuals = false }) {
   const dimensionsOnly = p.drawingPresentation === 'dimensions' && p.dimensionText
   const showDrawing = p.drawing && !dimensionsOnly
   const inCell = example => !supplementaryInBand || (example.displayPlacement?.mode === 'beside-product' && !tiledDisplays.includes(example.image))
@@ -51,7 +51,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
-      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''}`}>
+      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''} ${stackedVisuals ? 'dp-visuals--stacked' : ''}`}>
         <div className="dp-photo">
           {variants.length ? (
             <div className="dp-variants" aria-label={`${p.name} variations`}>
@@ -122,7 +122,7 @@ function SourceGroupCards({ row, columns, editable, onEdit, onDelete, highlight 
   const empty = (columns - row.length % columns) % columns
   const tiles = usageExamples(last).filter(e => e.displayPlacement?.mode === 'beside-product').slice(0, empty)
   return <div className="dp-source-group-cards" style={{gridTemplateColumns:`repeat(${columns}, minmax(0,1fr))`,gridTemplateRows:`repeat(${Math.ceil(row.length/columns)}, minmax(0,1fr))`}}>
-    {row.map(p=><Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} highlighted={highlight.includes(p.id)} supplementaryInBand tiledDisplays={p.id===last.id?tiles.map(e=>e.image):[]}/>)}
+    {row.map(p=><Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete} highlighted={highlight.includes(p.id)} supplementaryInBand tiledDisplays={p.id===last.id?tiles.map(e=>e.image):[]} stackedVisuals={false}/>)}
     {tiles.map((e,i)=><figure className="dp-inline-display" key={e.displayId||i} data-display-anchor={last.id}>
       <img src={e.image} alt={`Display — ${last.name}`} />
       <figcaption>{e.caption||`Display — ${last.name}`}</figcaption>
@@ -136,6 +136,7 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
   const flowTop = category?.flowTop ?? headerH + 4
   const rowH = category?.rowH ?? 118
   const pageRowH = page.rowH ?? rowH
+  const stackedSourcePage = page.index === 1 || page.sourcePage === 1 || page.rows.some(row => row.some(p => p?.categoryId === 'accessories' && p.sourcePage === 1))
 
   // A page kept from the source PDF — a cover, an application gallery, a spread of
   // close-up details, the installation steps. It prints exactly as it was printed
@@ -176,7 +177,7 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
               <SourceSupportBand products={row.supportForAll||row} compact/>
             </div> : row.supportFor ? <SourceSupportBand products={row.supportFor}/> : row.map(p => (
               <Cell key={p.id} p={p} editable={editable} onEdit={onEdit} onDelete={onDelete}
-                    highlighted={highlight.includes(p.id)} supplementaryInBand={Boolean(row.sourceGroup)} />
+                    highlighted={highlight.includes(p.id)} supplementaryInBand={Boolean(row.sourceGroup)} stackedVisuals={stackedSourcePage} />
             ))}
           </div>
         ))}
