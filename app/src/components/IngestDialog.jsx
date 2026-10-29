@@ -3,6 +3,7 @@ import { TYPE_A, TYPE_B } from '../lib/model.js'
 import { reconcile, applyReconcile } from '../lib/reconcile.js'
 import { apiUrl } from '../lib/api.js'
 import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
+import { processBackground } from '../lib/bgremove.js'
 
 // Upload a catalogue PDF -> the AI reads it -> YOU review what it found -> it is added.
 //
@@ -112,8 +113,50 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     return plans
   }
 
-  const showResult = result => {
-    const found = (result.products ?? []).map(p => ({ ...p, keep: (p.issues ?? []).length === 0 }))
+  // Every PDF/image import gets the same local preparation pass before review.
+  // It is deliberately limited to product-photo fields: drawings, original PDF
+  // pages, usage galleries and installed/context scenes must remain untouched.
+  const prepareImportedPhotos = async result => {
+    const warnings = [...(result.warnings ?? [])]
+    const found = []
+    const jobs = []
+    for (const source of result.products ?? []) {
+      const product = { ...source }
+      if (!product.isPage) {
+        for (const key of ['photo', 'extra']) {
+          if (product[key] && product.photoTreatmentMode !== 'preserve-scene') jobs.push({ owner: product, key, label: `${product.name || 'product'} ${key}` })
+        }
+        for (const key of ['finishes', 'variants']) {
+          if (Array.isArray(product[key])) {
+            product[key] = product[key].map(item => ({ ...item }))
+            for (const item of product[key]) if (item.photo) jobs.push({ owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
+          }
+        }
+      }
+      found.push(product)
+    }
+    if (!jobs.length) return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 }))
+    for (let i = 0; i < jobs.length; i++) {
+      const { owner, key, label } = jobs[i]
+      setProgress(`Preparing product photos locally — ${i + 1} of ${jobs.length}…`)
+      const original = owner[key]
+      try {
+        const cleaned = await processBackground(original, { force: true })
+        owner[`${key}Original`] = original
+        owner[key] = cleaned.dataUrl
+        owner[`${key}Treatment`] = 'product-only-local-v1'
+      } catch (error) {
+        const warning = `${label}: background could not be removed automatically — ${error.message}. Original kept for review.`
+        warnings.push(warning)
+        owner.photoTreatmentErrors = [...(owner.photoTreatmentErrors ?? []), warning]
+      }
+    }
+    result.warnings = warnings
+    return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 && !(p.photoTreatmentErrors?.length) }))
+  }
+
+  const showResult = async result => {
+    const found = await prepareImportedPhotos(result)
     setDrafts(found)
     setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length).map(p=>p.id)))
     setWarnings(result.warnings ?? [])
@@ -196,7 +239,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       }
 
       if (isImage) {
-        showResult(await res.json())
+        await showResult(await res.json())
         return
       }
 
@@ -228,11 +271,11 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
             if (parts.filter(p => p != null).length !== msg.assembled) {
               throw new Error(`The result arrived incomplete (${parts.filter(p => p != null).length} of ${msg.assembled} parts).`)
             }
-            showResult(JSON.parse(parts.join('')))
+            await showResult(JSON.parse(parts.join('')))
             continue
           }
           if (msg.progress) setProgress(msg.progress)
-          if (msg.done) showResult(msg.done)          // image uploads still reply whole
+          if (msg.done) await showResult(msg.done)          // image uploads still reply whole
         }
       }
     } catch (err) {
