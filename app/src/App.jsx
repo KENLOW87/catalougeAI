@@ -16,6 +16,7 @@ import { defaultCategoryFor } from './lib/categories/default.js'
 import { apiUrl } from './lib/api.js'
 import { repairSourcePlacement } from './lib/repair-source-placement.js'
 import { upsertSeriesProduct } from './lib/product-order.js'
+import { repairLegacyAccessoriesProducts } from './lib/repair-known-source.js'
 import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, clearAll } from './lib/store.js'
 
 const parentById = id => PARENTS.find(p => p.id === id)
@@ -177,7 +178,7 @@ export default function App() {
     loadAll().then(async ({ byCategory: saved, chromeByCategory: chromes, acceptedByCategory: accepted, deletedCategories: deleted, customCategories: custom, moved }) => {
       if (!alive) return
       for (const [id,list] of Object.entries(saved)) {
-        const repaired=repairSourcePlacement(list)
+        const repaired=repairLegacyAccessoriesProducts(id, repairSourcePlacement(list))
         if (repaired !== list) { await saveCatalogue(id,repaired); saved[id]=repaired }
       }
       if (!alive) return

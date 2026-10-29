@@ -62,7 +62,10 @@ export default function ProductDialog({ categoryId, category: given, initial, on
     setBgBusy(prev => new Set(prev).add(key))
     setBgError(prev => ({ ...prev, [key]: null }))
     try {
-      const result = await processBackground(dataUrl, { jobId })
+      // An explicit admin request must always reach segmentation, including a
+      // white/light backdrop. The old default skipped light borders and made
+      // removal appear to work only on darker photos.
+      const result = await processBackground(dataUrl, { force: true, jobId })
       apply(result.dataUrl)
       activityStatus(jobId, 'prepared-for-save')
       if (result.skipped) setBgError(prev => ({ ...prev, [key]: 'Background is already light, so the original photo was kept.' }))
