@@ -56,7 +56,10 @@ function Row({ p, editable, onEdit, onDelete, highlighted }) {
 }
 
 export default function PvcPage({ page, editable, onEdit, onDelete, highlight = [] }) {
-  const first = page.index === 1
+  // A mixed Accessories import keeps the original PVC pages after the LED
+  // pages, so sourcePage 2 is still the first PVC page even though the overall
+  // catalogue page index is not 1.
+  const first = page.sourcePage === 2 || (!page.sourcePage && page.index === 1)
   return (
     <div className="cat-page cat-page--pvc" data-page={page.index}>
       <div className="cat-chrome pvc-header">

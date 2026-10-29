@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Badge, Hit } from './bits.jsx'
+import PvcPage from './PvcPage.jsx'
 import { prepareDrawingDisplay } from '../lib/drawing-display.js'
 import { usageExamples, isDimensionReference, exampleHeading, examplesBesideProduct } from '../lib/product-layout.js'
 import { isOriginalProductCard } from '../lib/source-photo-match.js'
@@ -137,6 +138,25 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
   const rowH = category?.rowH ?? 118
   const pageRowH = page.rowH ?? rowH
   const stackedSourcePage = page.index === 1 || page.sourcePage === 1 || page.rows.some(row => row.some(p => p?.categoryId === 'accessories' && p.sourcePage === 1))
+
+  // Mixed Accessories PDFs contain the same PVC Marble source pages as the
+  // dedicated PVC catalogue. Keep those rows on the original one-product-per-
+  // row template instead of silently sending them through the generic grid.
+  const pvcProducts = page.rows.flat()
+  const pvcSourcePage = pvcProducts.length > 0 && pvcProducts.every(p => {
+    const sourceSeries = p?.series || p?.third || p?.subtitle || ''
+    const sourceVariants = p?.variants ?? p?.finishes
+    return Array.isArray(sourceVariants) && sourceVariants.length > 0 && /pvc\s*marble/i.test(String(sourceSeries))
+  })
+  if (pvcSourcePage) {
+    const pvcRows = pvcProducts.map(p => ({ ...p,
+      size: p.size ?? p.subtitle ?? '',
+      series: p.series || p.third || 'PVC Marble',
+      variants: p.variants ?? p.finishes ?? [],
+    }))
+    return <PvcPage page={{ ...page, rows: pvcRows }} editable={editable}
+      onEdit={onEdit} onDelete={onDelete} highlight={highlight} />
+  }
 
   // A page kept from the source PDF — a cover, an application gallery, a spread of
   // close-up details, the installation steps. It prints exactly as it was printed
