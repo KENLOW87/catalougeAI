@@ -24,7 +24,7 @@ function Variant({ v }) {
 
 function Row({ p, editable, onEdit, onDelete, highlighted }) {
   return (
-    <div className={`pvc-row ${p.exception ? 'pvc-row--tall' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`}
+    <div className={`pvc-row ${(p.exception || p.sourceTall) ? 'pvc-row--tall' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`}
          id={editable ? `product-${p.id}` : undefined}>
       <div className="pvc-left">
         <Badge n={p.slot} variant="pvc" />
