@@ -191,6 +191,12 @@
 .pvc-exception .pvc-variant { flex: 0 0 34mm; height: 100%; }
 .pvc-exdrawing { width: 32mm; height: 28mm; object-fit: contain; mix-blend-mode: multiply; }
 .pvc-exnote    { font-size: 3.2mm; line-height: 4mm; color: #333; }
+/* The source page has two White-only sizes (15mm and 20mm) in one exception
+   band, so keep both pairs visible without creating another product row. */
+.pvc-exception--multi { gap: 4mm; }
+.pvc-exception--multi .pvc-variant { flex: 0 0 25mm; }
+.pvc-exception--multi .pvc-exdrawing { width: 23mm; height: 24mm; }
+.pvc-exception--multi .pvc-exnote { flex: 1 1 auto; min-width: 0; }
 /* --- the gold rule between products -------------------------------------- */
 .pvc-rule { position: absolute; left: 15.5mm; right: 5mm; bottom: 1.5mm; height: 0.4mm;
             background: linear-gradient(90deg, var(--pvc-gold), #e6d9a8 70%, #fff); }

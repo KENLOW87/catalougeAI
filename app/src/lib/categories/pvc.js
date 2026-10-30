@@ -51,7 +51,7 @@ export const blankVariant = () => ({
 })
 
 const A = 'public/assets/pvc'
-const v = (id, name, i) => ({ id: `${id}-v${i}`, name, photo: `/assets/pvc/${id}-v${i}.png` })
+const v = (id, name, i, assetId = id) => ({ id: `${id}-v${i}`, name, photo: `/assets/pvc/${assetId}-v${i}.png` })
 
 // The 7 products as extracted from pages 2-3.
 export const PVC_SEED = [
@@ -79,15 +79,21 @@ export const PVC_SEED = [
   {
     id: 'corner-profile', name: 'CORNER Profile', size: `9'5"`, series: 'PVC Marble',
     drawing: '/assets/pvc/corner-profile-drawing.png', extra: '/assets/pvc/corner-profile-extra.png', exceptions: null,
-    variants: [v('corner-profile', 'Silver', 0), v('corner-profile', 'Rose Gold', 1), v('corner-profile', 'Gold', 2), v('corner-profile', 'Black', 3)],
+    // The source extraction stored this row under the L Profile 10 asset names.
+    variants: [v('corner-profile', 'Silver', 0, 'l-profile-10'), v('corner-profile', 'Rose Gold', 1, 'l-profile-10'), v('corner-profile', 'Gold', 2, 'l-profile-10'), v('corner-profile', 'Black', 3, 'l-profile-10')],
   },
   {
-    // Carries the source PDF's one exception: the White finish is shown at 20mm
-    // with its own photo and dimension drawing, plus the printed note.
+    // Carries the source PDF's two exceptions: the White finish is shown at
+    // 15mm and 20mm, each with its own photo and dimension drawing.
     id: 'l-profile-14', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
     drawing: '/assets/pvc/l-profile-14-drawing.png', extra: null,
     variants: [v('l-profile-14', 'Silver', 0), v('l-profile-14', 'Rose Gold', 1), v('l-profile-14', 'Gold', 2), v('l-profile-14', 'Black', 3)],
     exceptions: [
+      {
+        variant: { id: 'l14-white-15', name: 'White', photo: '/assets/pvc/l-profile-14-white-15.png' },
+        drawing: '/assets/pvc/l-profile-14-white-15-drawing.png',
+        note: '(This size only for White Color)',
+      },
       {
         variant: { id: 'l14-white-20', name: 'White', photo: '/assets/pvc/l-profile-14-white.png' },
         drawing: '/assets/pvc/l-profile-14-white-drawing.png',
@@ -98,7 +104,8 @@ export const PVC_SEED = [
   {
     id: 'l-profile-10', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
     drawing: '/assets/pvc/l-profile-10-drawing.png', extra: null, exceptions: null,
-    variants: [v('l-profile-10', 'Silver', 0), v('l-profile-10', 'Rose Gold', 1), v('l-profile-10', 'Gold', 2), v('l-profile-10', 'Black', 3)],
+    // This source row was extracted under the CORNER asset names.
+    variants: [v('l-profile-10', 'Silver', 0, 'corner-profile'), v('l-profile-10', 'Rose Gold', 1, 'corner-profile'), v('l-profile-10', 'Gold', 2, 'corner-profile'), v('l-profile-10', 'Black', 3, 'corner-profile')],
   },
 ]
 
