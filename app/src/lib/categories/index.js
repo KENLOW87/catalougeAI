@@ -82,7 +82,9 @@ export const CATEGORIES = {
 }
 
 export const CATEGORY_IDS = Object.keys(CATEGORIES)
-export const DEFAULT_CATEGORY = 'accessories-led'
-export const getCategory = id => CATEGORIES[id] ?? CATEGORIES[DEFAULT_CATEGORY]
+export const DEFAULT_CATEGORY = 'accessories'
+// Unknown/custom families are resolved by App through the default renderer. Keep
+// the legacy LED definition only as a compatibility fallback for old print jobs.
+export const getCategory = id => CATEGORIES[id] ?? CATEGORIES['accessories-led']
 
 export { PARENTS, DEFAULT_PARENT, getParent, parentLabel, parentOfCategory } from './parents.js'

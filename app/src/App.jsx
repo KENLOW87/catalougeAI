@@ -17,9 +17,11 @@ import { apiUrl } from './lib/api.js'
 import { repairSourcePlacement } from './lib/repair-source-placement.js'
 import { upsertSeriesProduct } from './lib/product-order.js'
 import { repairLegacyAccessoriesProducts } from './lib/repair-known-source.js'
-import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, clearAll } from './lib/store.js'
+import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, removeCustomCategory, clearAll } from './lib/store.js'
 
 const parentById = id => PARENTS.find(p => p.id === id)
+const LEGACY_ACCESSORIES = new Set(['accessories-led', 'pvc-marble'])
+const currentCategoryId = id => LEGACY_ACCESSORIES.has(id) ? 'accessories' : id
 
 // A family with no sub-catalogue is itself a catalogue, so its id doubles as a
 // category id. Built-in categories keep their bespoke template; a family without one
@@ -84,8 +86,8 @@ export default function App() {
   const [categoryId, setCategoryId] = useState(() => {
     if (print && window.__CATALOGUE_CATEGORY__) return window.__CATALOGUE_CATEGORY__
     const fromUrl = params.get('category')
-    if (fromUrl && CATEGORIES[fromUrl]) return fromUrl
-    try { return localStorage.getItem('geometra.activeCategory') ?? DEFAULT_CATEGORY } catch { return DEFAULT_CATEGORY }
+    if (fromUrl && (CATEGORIES[fromUrl] || parentById(fromUrl))) return currentCategoryId(fromUrl)
+    try { return currentCategoryId(localStorage.getItem('geometra.activeCategory') ?? DEFAULT_CATEGORY) } catch { return DEFAULT_CATEGORY }
   })
 
   // Products are kept per category so switching does not disturb the other one.
@@ -97,6 +99,7 @@ export default function App() {
     }
     const out = {}
     for (const id of CATEGORY_IDS) out[id] = CATEGORIES[id].seed
+    for (const family of PARENTS.filter(p => p.children.length === 0)) out[family.id] ??= []
     return out
   })
 
@@ -177,6 +180,25 @@ export default function App() {
     let alive = true
     loadAll().then(async ({ byCategory: saved, chromeByCategory: chromes, acceptedByCategory: accepted, deletedCategories: deleted, customCategories: custom, moved }) => {
       if (!alive) return
+      // One-time, lossless migration from the rejected Accessories child tabs.
+      // Keep every record, preserve its order and stable id, and rewrite ownership
+      // so the source-aware Accessories paginator can render the whole PDF together.
+      const legacy = ['accessories-led', 'pvc-marble'].flatMap(id => saved[id] ?? [])
+      if (legacy.length) {
+        const combined = [...(saved.accessories ?? []), ...legacy]
+        const seen = new Set()
+        saved.accessories = combined.filter((item, index) => {
+          const key = item.id ? `id:${item.id}` : `record:${item.sourcePage ?? ''}:${item.name ?? ''}:${index}`
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        }).map(item => ({ ...item, categoryId: 'accessories' }))
+        await saveCatalogue('accessories', saved.accessories)
+        await Promise.all(['accessories-led', 'pvc-marble'].map(id => saveCatalogue(id, [])))
+        saved['accessories-led'] = []
+        saved['pvc-marble'] = []
+        if (!chromes.accessories) chromes.accessories = chromes['accessories-led'] ?? chromes['pvc-marble'] ?? null
+      }
       for (const [id,list] of Object.entries(saved)) {
         const repaired=repairLegacyAccessoriesProducts(id, repairSourcePlacement(list))
         if (repaired !== list) { await saveCatalogue(id,repaired); saved[id]=repaired }
@@ -186,8 +208,13 @@ export default function App() {
       setChromeByCategory(chromes)
       setAcceptedByCategory(accepted ?? {})
       setDeletedCategories(deleted ?? {})
-      setCustomCategories(custom ?? {})
+      const builtInParentIds = new Set(PARENTS.map(p => p.id))
+      const cleanCustom = Object.fromEntries(Object.entries(custom ?? {}).filter(([id]) => !builtInParentIds.has(id)))
+      const duplicateCustomIds = Object.keys(custom ?? {}).filter(id => builtInParentIds.has(id))
+      if (duplicateCustomIds.length) await Promise.all(duplicateCustomIds.map(removeCustomCategory))
+      setCustomCategories(cleanCustom)
       setHydrated(true)
+      if (LEGACY_ACCESSORIES.has(categoryId)) setCategoryId('accessories')
       if (moved.length) console.log(`[store] moved ${moved.length} record(s) out of localStorage into IndexedDB`)
     }).catch(e => {
       // Better to refuse to save than to save over good data with nothing.
@@ -332,9 +359,10 @@ export default function App() {
       // code (`category.seed`) as a fallback for "nothing stored yet" — an
       // explicit empty record is what suppresses that fallback, the same way
       // `removeCatalogue` already does for a single category.
-      await Promise.all(CATEGORY_IDS.map(id => saveCatalogue(id, [])))
+      const catalogueIds = [...new Set([...CATEGORY_IDS, ...PARENTS.filter(p => p.children.length === 0).map(p => p.id)])]
+      await Promise.all(catalogueIds.map(id => saveCatalogue(id, [])))
       const blank = {}
-      for (const id of CATEGORY_IDS) blank[id] = []
+      for (const id of catalogueIds) blank[id] = []
       setByCategory(blank)
       setChromeByCategory({})
       setAcceptedByCategory({})

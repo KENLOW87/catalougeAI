@@ -175,6 +175,13 @@ export async function saveCustomCategory(category) {
   } finally { db.close() }
 }
 
+/** Remove a legacy custom catalogue definition after its records have been adopted
+ * by a built-in family with the same id. Product records are stored separately. */
+export async function removeCustomCategory(id) {
+  const db = await open()
+  try { await tx(db, 'readwrite', s => s.delete(`custom.${id}`)) } finally { db.close() }
+}
+
 /** Wipe EVERY record this browser holds — every catalogue, header, accepted
  *  check, deletion marker and created category. For starting over clean, e.g.
  *  before demoing to a new company. The two built-in categories' seed examples

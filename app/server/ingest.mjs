@@ -458,13 +458,15 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     sourcePage: pageNo,
     readBy: 'rules',
   }
-  const category = spec?.category ?? (Array.isArray(p.variants) ? 'pvc-marble' : 'accessories-led')
+  const category = ['accessories-led', 'pvc-marble'].includes(spec?.category)
+    ? 'accessories'
+    : (spec?.category ?? 'accessories')
   base.categoryId = category      // where these products belong; the dialog routes on it
 
   // A category the user created has no fixed product shape — it has whatever fields
   // their layout captured. Pass those through rather than forcing it into one of the
   // two built-in shapes, which would silently drop everything that does not fit.
-  const BUILTIN = ['accessories-led', 'pvc-marble']
+  const BUILTIN = ['accessories', 'accessories-led', 'pvc-marble']
   if (!BUILTIN.includes(category)) {
     const finishes = (p.finishes ?? p.variants ?? []).map((f, k) => ({ id: `${base.id}f${k}`, ...f }))
     const draft = {

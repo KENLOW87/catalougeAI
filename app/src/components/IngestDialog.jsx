@@ -90,9 +90,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   /**
    * Which catalogue each draft belongs to, given the chosen destination.
    *
-   * A draft read by a NAMED layout keeps its own category — the LED and PVC Marble
-   * readers know what they read, and that is not the admin's to override here.
-   * Everything else — the generic photo-grid reads — follows the destination.
+   * LED and PVC Marble are layouts inside the same Accessories catalogue. Reader
+   * shape still controls their review fields, but never creates child catalogues.
    */
   const groupBy = (found, destId) => {
     const byCat = {}
@@ -100,10 +99,9 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       // Unknown-layout AI drafts must wait for routing. Treating every draft
       // without a built-in shape as LED used to put mirror/showroom products in
       // the wrong catalogue before the destination suggestion was applied.
-      const own = d.categoryId ?? (d.readBy === 'rules'
-        ? (Array.isArray(d.variants) ? 'pvc-marble' : 'accessories-led')
-        : null)
-      const cat = BUILTIN_CATS.includes(own) ? own : (destId || own)
+      const own = d.categoryId ?? null
+      const requested = ['accessories-led', 'pvc-marble'].includes(destId) ? 'accessories' : destId
+      const cat = BUILTIN_CATS.includes(own) ? 'accessories' : (requested || own)
       ;(byCat[cat] ??= []).push({ ...d, categoryId: cat })
     }
     const plans = {}
@@ -302,7 +300,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   // Three product shapes now: LED (type A/B, colour, length), PVC (size, series,
   // variants) and the generic shape a user-created category uses (subtitle, third,
   // finishes). Which one it is comes from the reader, not from guessing.
-  const BUILTIN_CATS = ['accessories-led', 'pvc-marble']
+  const BUILTIN_CATS = ['accessories', 'accessories-led', 'pvc-marble']
   const isPvc = d => Array.isArray(d.variants)
   const isGeneric = d => d.categoryId != null && !BUILTIN_CATS.includes(d.categoryId)
 

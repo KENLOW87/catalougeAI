@@ -757,7 +757,7 @@ export const BUILTIN_SPECS = [
   {
     id: 'accessories-led',
     title: 'Accessories ~ LED',
-    category: 'accessories-led',
+    category: 'accessories',
     builtin: true,
     inkCut: 185,                       // black line art
     // LED stacks colour and length ~1.0mm apart, tighter than PVC's lines.
@@ -795,7 +795,7 @@ export const BUILTIN_SPECS = [
   {
     id: 'pvc-marble',
     title: 'PVC Marble',
-    category: 'pvc-marble',
+    category: 'accessories',
     builtin: true,
     inkCut: 210,                       // gold line art sits at ~160 luminance
     anchor: {

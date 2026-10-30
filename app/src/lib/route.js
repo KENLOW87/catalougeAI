@@ -16,12 +16,7 @@
 
 import { PARENTS, parentLabel } from './categories/parents.js'
 
-// Child catalogues that are specific enough to route without a second question.
-// Parent families with no children use their own id as the catalogue id.
-const CHILD_HINTS = [
-  { id: 'accessories-led', words: ['led', 'linear', 'light'] },
-  { id: 'pvc-marble', words: ['edge', 'display', 'accessories'] },
-]
+const CHILD_HINTS = []
 
 const STOP = new Set(['the', 'and', 'for', 'with', 'series', 'product', 'products',
   'catalogue', 'catalog', 'panel', 'size', 'mm', 'w', 'l', 't'])

@@ -14,6 +14,7 @@ const browser = await puppeteer.launch({ executablePath:'C:/Program Files/Google
 try {
   const page = await browser.newPage(), payloads = [], errors = []
   let detected = false, forbidden = 0
+  const forbiddenUrls = []
   page.on('pageerror',error => errors.push(error.message))
   const headers = {'Access-Control-Allow-Origin':'http://localhost:5173','Access-Control-Allow-Headers':'Content-Type,X-Activity-Job-ID,X-Activity-Origin','Access-Control-Allow-Methods':'GET,POST,OPTIONS'}
   await page.setRequestInterception(true)
@@ -24,10 +25,10 @@ try {
     if (path==='/api/activity/events') return request.respond({status:200,headers,contentType:'application/json',body:'{"ok":true}'})
     if (['/api/ingest','/api/ingest-image'].includes(path)) {
       const payload = JSON.parse(request.postData()); payloads.push(payload)
-      const result = {products:[{id:'neutral-test',name:'ZX77',photo,wantsDrawing:false,readBy:'vision'}],routing:{confident:detected,...(detected ? {suggestedCategoryId:'wainscoting-mirror'}:{}),filename:payload.filename}}
+      const result = {products:[{id:'neutral-test',name:'ZX77',photo,photoTreatmentMode:'preserve-scene',wantsDrawing:false,readBy:'vision'}],routing:{confident:detected,...(detected ? {suggestedCategoryId:'wainscoting-mirror'}:{}),filename:payload.filename}}
       return request.respond({status:200,headers,contentType:path==='/api/ingest'?'application/x-ndjson':'application/json',body:path==='/api/ingest'?JSON.stringify({done:result})+'\n':JSON.stringify(result)})
     }
-    if (/\/api\/(interpret|image\/edit|export)/.test(request.url()) || /^https?:/.test(request.url()) && !['localhost','127.0.0.1'].includes(new URL(request.url()).hostname)) {forbidden++;return request.abort()}
+    if (/\/api\/(interpret|image\/edit|export)/.test(request.url()) || /^https?:/.test(request.url()) && !['localhost','127.0.0.1'].includes(new URL(request.url()).hostname)) {forbidden++;forbiddenUrls.push(request.url());return request.abort()}
     request.continue()
   })
   await page.goto('http://localhost:5173',{waitUntil:'networkidle0'})
@@ -54,15 +55,15 @@ try {
     assert.equal(payloads.at(-1).into,null,'The previous active catalogue must not reach the reader')
     await cancel()
   }
-  await page.evaluate(()=>{const card=[...document.querySelectorAll('.dashboard-card')].find(card=>/PVC Marble/i.test(card.querySelector('h3').textContent));[...card.querySelectorAll('button')].find(b=>b.textContent==='Upload file').click()})
-  assert.equal(await review(pdf),'pvc-marble','Card upload retains its explicit destination')
-  assert.equal(payloads.at(-1).into,'pvc-marble');await cancel()
+  await page.evaluate(()=>{const card=[...document.querySelectorAll('.dashboard-card')].find(card=>card.querySelector('h3').textContent.trim()==='Accessories');[...card.querySelectorAll('button')].find(b=>b.textContent==='Upload file').click()})
+  assert.equal(await review(pdf),'accessories','Accessories card upload retains its single explicit destination')
+  assert.equal(payloads.at(-1).into,'accessories');await cancel()
   detected=true
   await page.click('.dashboard-head-actions .primary')
   assert.equal(await review(pdf),'wainscoting-mirror','Confident file recognition still suggests the correct catalogue')
   assert.equal(payloads.at(-1).into,null);await cancel()
   await page.reload({waitUntil:'networkidle0'});await assertDashboard()
   assert.equal(await page.evaluate(async()=>JSON.stringify(await(await import('/src/lib/store.js')).loadAll())),snapshot,'Opening/reviewing/cancelling does not change any catalogue')
-  assert.deepEqual(errors,[]);assert.equal(forbidden,0)
-  console.log('PASS upload destinations: general PDF/image upload stays neutral; remembered Wainscoting never sent; explicit PVC card and detected routing preserved; cancel/reload retains dashboard/category/data. Mock readers only, no paid AI or exports.')
+  assert.deepEqual(errors,[]);assert.equal(forbidden,0,`Unexpected requests: ${forbiddenUrls.join(', ')}`)
+  console.log('PASS upload destinations: general PDF/image upload stays neutral; remembered Wainscoting never sent; single Accessories destination and detected routing preserved; cancel/reload retains dashboard/category/data. Mock readers only, no paid AI or exports.')
 } finally {await browser.close();rmSync(directory,{recursive:true,force:true})}

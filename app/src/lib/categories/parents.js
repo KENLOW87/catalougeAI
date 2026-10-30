@@ -1,15 +1,8 @@
 // Parent categories — the product families GEOMETRA publishes.
 //
-// The catalogue is two levels deep:
-//
-//   Accessories  (parent)
-//     ├── LED           (child — built)
-//     └── PVC Marble    (child — built)
-//   Acoustic Panel  (parent, no children yet)
-//   ...
-//
-// A CHILD is what actually holds products, a template and a reflow rule. A PARENT
-// is just a grouping — it owns no products of its own.
+// Every published family is one catalogue. Accessories used to be split into LED
+// and PVC Marble children, but the source PDF is one catalogue and must stay one
+// catalogue throughout upload, review, editing and export.
 //
 // Taken from the client's catalogue folder, with the edition date shown on each
 // file. The date matters: two editions of the same family exist (PVC Rattan
@@ -21,7 +14,7 @@
 // is the marble sheet product itself. Keep them separate.
 
 export const PARENTS = [
-  { id: 'accessories',            title: 'Accessories',              edition: 'Jan 2026',       children: ['accessories-led', 'pvc-marble'] },
+  { id: 'accessories',            title: 'Accessories',              edition: 'March 2026',     children: [] },
   { id: 'acoustic-panel',         title: 'Acoustic Panel',           edition: 'August 2025',    children: [] },
   { id: 'carbon-crystal-wall',    title: 'Carbon Crystal Wall Panel', edition: 'Jan 2026',      children: [] },
   { id: 'ceiling-panel',          title: 'Ceiling Panel',            edition: 'December 2025',  children: [] },
