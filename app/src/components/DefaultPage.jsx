@@ -58,12 +58,12 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
           {variants.length ? (
             <div className="dp-variants" aria-label={`${p.name} variations`}>
               {variants.map((v, i) => <figure key={v.id || i}>
-                <img src={v.photo} alt={v.name || `${p.name} variation ${i + 1}`} />
+                <img className={v.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={v.photo} alt={v.name || `${p.name} variation ${i + 1}`} />
                 {v.name && <figcaption>{v.name}</figcaption>}
               </figure>)}
             </div>
           ) : p.photo
-            ? <img src={p.photo} alt={p.name} />
+            ? <img className={p.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={p.photo} alt={p.name} />
             : <span className="dp-missing">no photo</span>}
         </div>
         {showDrawing && (

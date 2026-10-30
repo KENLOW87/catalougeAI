@@ -16,7 +16,7 @@ function CellA({ p, editable, onEdit, onDelete, highlighted }) {
       {/* The tint follows the SLOT, not the product: a product moving from slot 3
           to slot 2 must lose it. */}
       <div className={`panel ${isTinted(p.slot) ? 'panel--tint' : ''}`}>
-        {p.photo && <img className="photo" src={p.photo} alt={p.name} />}
+        {p.photo && <img className={`photo ${p.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : ''}`} src={p.photo} alt={p.name} />}
         {p.drawing && <img className="drawing" src={p.drawing} alt="" />}
       </div>
       {editable && <Hit product={p} onEdit={onEdit} onDelete={onDelete} />}
@@ -36,7 +36,7 @@ function BlockB({ p, editable, onEdit, onDelete, highlighted }) {
           {(p.finishes ?? []).map(f => (
             <div className="finish" key={f.id}>
               {f.badge && <span className="ribbon">{f.badge}</span>}
-              {f.photo && <img className="fphoto" src={f.photo} alt={f.name} />}
+              {f.photo && <img className={`fphoto ${f.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : ''}`} src={f.photo} alt={f.name} />}
               <div className="fname">{f.name}</div>
             </div>
           ))}

@@ -17,10 +17,10 @@ function Variant({ v }) {
       {v.photo
         ? (v.secondaryPhoto
           ? <div className="pvc-vphotos">
-              <img className="pvc-vphoto" src={v.photo} alt={v.name} />
+              <img className={`pvc-vphoto ${v.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : ''}`} src={v.photo} alt={v.name} />
               <img className="pvc-vphoto" src={v.secondaryPhoto} alt="" />
             </div>
-          : <img className="pvc-vphoto" src={v.photo} alt={v.name} />)
+          : <img className={`pvc-vphoto ${v.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : ''}`} src={v.photo} alt={v.name} />)
         : <span className="pvc-missing" />}
       <div className="pvc-vname">{v.name}</div>
     </div>
@@ -41,7 +41,7 @@ function Row({ p, editable, onEdit, onDelete, highlighted }) {
 
       <div className={`pvc-right ${p.sourceComposite ? `pvc-right--composite ${p.sourceTall ? 'pvc-right--composite-tall' : ''}` : ''}`}>
         {p.sourceComposite
-          ? <img className="pvc-source-photo" src={p.photo} alt="" />
+          ? <img className={`pvc-source-photo ${p.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : ''}`} src={p.photo} alt="" />
           : <div className="pvc-variants">
               {(p.variants ?? []).map(v => <Variant key={v.id} v={v} />)}
             </div>}

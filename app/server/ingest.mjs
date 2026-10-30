@@ -27,6 +27,7 @@ import { readProductDimensions } from './read-dimensions.mjs'
 import { findProductExamples, attachProductExamples, validSourceBox, coversPrimaryPhoto } from './product-examples.mjs'
 import { validateImportedAssociations } from './image-association.mjs'
 import {matchesRenderedPhoto} from './native-photo-evidence.mjs'
+import { attachImportEvidence, sourceDocumentFor } from './import-evidence.mjs'
 import { ocr, shutdownOcr } from './ocr.mjs'
 import { suggestDestination, suggestedCatalogue } from '../src/lib/route.js'
 import { popplerTool } from './poppler.mjs'
@@ -977,6 +978,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // Photo background cleanup is a paid AI call per photo — it must never run
     // automatically during import. It stays a separate, explicit step the admin
     // (or the assistant, on request) triggers after reviewing the extracted photos.
+    const sourceDocument = sourceDocumentFor(bytes, filename, count)
+    attachImportEvidence(products, sourceDocument)
     const photoTreatment = { processed: 0, preserved: 0, failed: 0, total: 0, warnings: [] }
     onProgress('Done.')
     return { products, pages: count, warnings, chrome, routing, photoTreatment }

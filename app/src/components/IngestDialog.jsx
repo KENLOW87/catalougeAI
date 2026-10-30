@@ -4,6 +4,7 @@ import { reconcile, applyReconcile } from '../lib/reconcile.js'
 import { apiUrl } from '../lib/api.js'
 import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
 import { processBackground } from '../lib/bgremove.js'
+import { assessBackgroundRemoval } from '../lib/image-quality.js'
 
 // Upload a catalogue PDF -> the AI reads it -> YOU review what it found -> it is added.
 //
@@ -121,13 +122,19 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     for (const source of result.products ?? []) {
       const product = { ...source }
       if (!product.isPage) {
-        for (const key of ['photo', 'extra']) {
-          if (product[key] && product.photoTreatmentMode !== 'preserve-scene') jobs.push({ owner: product, key, label: `${product.name || 'product'} ${key}` })
+        if (product.photo && product.photoTreatmentMode !== 'preserve-scene') {
+          jobs.push({ product, owner: product, key: 'photo', label: `${product.name || 'product'} photo` })
+        }
+        // An unclassified extra may be an installation scene, instruction or
+        // dimension reference. Only an explicitly product-only alternate is safe
+        // to isolate automatically; usage/context imagery stays rectangular.
+        if (product.extra && ['product', 'alternate-view'].includes(product.extraRole) && product.extraTreatmentMode !== 'preserve-scene') {
+          jobs.push({ product, owner: product, key: 'extra', label: `${product.name || 'product'} extra` })
         }
         for (const key of ['finishes', 'variants']) {
           if (Array.isArray(product[key])) {
             product[key] = product[key].map(item => ({ ...item }))
-            for (const item of product[key]) if (item.photo) jobs.push({ owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
+            for (const item of product[key]) if (item.photo && item.photoTreatmentMode !== 'preserve-scene') jobs.push({ product, owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
           }
         }
       }
@@ -135,14 +142,22 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     }
     if (!jobs.length) return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 }))
     for (let i = 0; i < jobs.length; i++) {
-      const { owner, key, label } = jobs[i]
+      const { product, owner, key, label } = jobs[i]
       setProgress(`Preparing product photos locally — ${i + 1} of ${jobs.length}…`)
       const original = owner[key]
       try {
         const cleaned = await processBackground(original, { force: true })
+        const quality = await assessBackgroundRemoval(original, cleaned.dataUrl)
         owner[`${key}Original`] = original
-        owner[key] = cleaned.dataUrl
-        owner[`${key}Treatment`] = 'product-only-local-v1'
+        owner[`${key}Transparent`] = cleaned.dataUrl
+        owner[`${key}Quality`] = quality
+        owner[`${key}DisplayBackground`] = quality.displayBackground
+        owner[key] = quality.accepted ? cleaned.dataUrl : original
+        owner[`${key}Treatment`] = quality.accepted ? 'product-only-local-v2-validated' : 'original-quality-fallback'
+        const review = quality.findings.filter(finding => finding.severity !== 'info').map(finding => ({
+          ...finding, asset: key, ownerId: owner.id ?? product.id, label,
+        }))
+        if (review.length) product.photoQualityIssues = [...(product.photoQualityIssues ?? []), ...review]
       } catch (error) {
         const warning = `${label}: background could not be removed automatically — ${error.message}. Original kept for review.`
         warnings.push(warning)
@@ -150,13 +165,13 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       }
     }
     result.warnings = warnings
-    return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 && !(p.photoTreatmentErrors?.length) }))
+    return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 && !(p.photoTreatmentErrors?.length) && !(p.photoQualityIssues?.length) }))
   }
 
   const showResult = async result => {
     const found = await prepareImportedPhotos(result)
     setDrafts(found)
-    setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length).map(p=>p.id)))
+    setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length || p.photoQualityIssues?.length).map(p=>p.id)))
     setWarnings(result.warnings ?? [])
     setChrome(result.chrome ?? null)
     setRouting(result.routing ?? null)
@@ -182,7 +197,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     // selected.  Default only the matched records that actually carry media;
     // the administrator can still untick any individual record in the review.
     setUseDraft(new Set(Object.values(nextPlan).flatMap(p =>
-      p.matched.filter(m => hasMedia(m.draft) && !m.draft.photoTreatmentErrors?.length && !m.draft.imageAssociationIssues?.length).map(m => m.draft.id))))
+      p.matched.filter(m => hasMedia(m.draft) && !m.draft.photoTreatmentErrors?.length && !m.draft.imageAssociationIssues?.length && !m.draft.photoQualityIssues?.length).map(m => m.draft.id))))
     setPhase('review')
   }
 
@@ -295,7 +310,18 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     onCancel()
   }
 
-  const patch = (id, changes) => setDrafts(ds => ds.map(d => (d.id === id ? { ...d, ...changes } : d)))
+  const patch = (id, changes) => {
+    setDrafts(ds => ds.map(d => (d.id === id ? { ...d, ...changes } : d)))
+    // Matched drafts are rendered from the reconciliation plan, while new ones
+    // are rendered from `drafts`. Keep both views on the same reviewed record.
+    setPlan(current => current && Object.fromEntries(Object.entries(current).map(([category, value]) => [category, {
+      ...value,
+      added: value.added.map(d => d.id === id ? { ...d, ...changes } : d),
+      matched: value.matched.map(match => match.draft.id === id
+        ? { ...match, draft: { ...match.draft, ...changes } }
+        : match),
+    }])))
+  }
 
   // Three product shapes now: LED (type A/B, colour, length), PVC (size, series,
   // variants) and the generic shape a user-created category uses (subtitle, third,
@@ -307,6 +333,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const recheck = d => {
     if(d.imageAssociationIssues?.length)return ['padanan gambar perlu disemak',...d.imageAssociationIssues.map(referenceLabel)]
     if (d.photoTreatmentErrors?.length) return d.photoTreatmentErrors
+    if (d.photoQualityIssues?.length) return d.photoQualityIssues.map(issue => `${issue.label}: ${issue.message}`)
     // A page kept whole is never "missing" anything — it IS the page.
     if (d.isPage) return []
     // A drawing is only required where the layout actually has one — a sheet
@@ -568,6 +595,15 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                               refresh images from the PDF
                             </label>
                           )}
+                          {m.draft.photoQualityIssues?.length > 0 && <div className="recon-quality">
+                            <span>{m.draft.photoQualityIssues.map(issue => issue.message).join(' · ')}</span>
+                            {m.draft.photoOriginal && <img src={m.draft.photoOriginal} alt="Original source" />}
+                            {m.draft.photo && <img className={m.draft.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={m.draft.photo} alt="Proposed result" />}
+                            <button type="button" onClick={() => {
+                              patch(m.draft.id, { photoQualityIssues: [] })
+                              setUseDraft(current => new Set(current).add(m.draft.id))
+                            }}>Saya sudah semak asal dan hasil</button>
+                          </div>}
                         </li>
                       ))}
                     </ul>
@@ -683,14 +719,20 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                         <figcaption>{example.role==='usage'?'Contoh penggunaan':'Gambar tambahan'}: {example.caption || index + 1}</figcaption>
                       </figure>)}
                       {(isGeneric(d) || (!isPvc(d) && d.type === TYPE_A)) && (
-                        <figure>
-                          {d.photo ? <img src={d.photo} alt="" /> : <span className="missing">no photo</span>}
-                          <figcaption>
-                            photo
-                            <input type="file" accept="image/*"
-                                   onChange={e => upload(d.id, 'photo', e.target.files?.[0])} />
-                          </figcaption>
-                        </figure>
+                        <>
+                          {d.photoQualityIssues?.length > 0 && d.photoOriginal && <figure className="quality-original">
+                            <img src={d.photoOriginal} alt="Original source" />
+                            <figcaption>asal (sentiasa disimpan)</figcaption>
+                          </figure>}
+                          <figure>
+                            {d.photo ? <img src={d.photo} alt="" /> : <span className="missing">no photo</span>}
+                            <figcaption>
+                              {d.photoTreatment === 'original-quality-fallback' ? 'asal digunakan — cutout ditolak' : 'cadangan transparent'}
+                              <input type="file" accept="image/*"
+                                     onChange={e => upload(d.id, 'photo', e.target.files?.[0])} />
+                            </figcaption>
+                          </figure>
+                        </>
                       )}
                       <figure>
                         {d.drawing ? <img src={d.drawing} alt="" /> : <span className="missing">no drawing</span>}
@@ -701,14 +743,20 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                         </figcaption>
                       </figure>
                       {(isPvc(d) ? d.variants : (isGeneric(d) || d.type === TYPE_B) ? d.finishes ?? [] : []).map(f => (
-                        <figure key={f.id}>
-                          {f.photo ? <img src={f.photo} alt="" /> : <span className="missing">no photo</span>}
-                          <figcaption>
-                            {f.name || 'finish'}
-                            <input type="file" accept="image/*"
-                                   onChange={e => upload(d.id, null, e.target.files?.[0], f.id)} />
-                          </figcaption>
-                        </figure>
+                        <React.Fragment key={f.id}>
+                          {d.photoQualityIssues?.some(issue => issue.ownerId === f.id) && f.photoOriginal && <figure className="quality-original">
+                            <img src={f.photoOriginal} alt="Original source" />
+                            <figcaption>{f.name || 'finish'} — asal</figcaption>
+                          </figure>}
+                          <figure>
+                            {f.photo ? <img src={f.photo} alt="" /> : <span className="missing">no photo</span>}
+                            <figcaption>
+                              {f.name || 'finish'} — {f.photoTreatment === 'original-quality-fallback' ? 'asal digunakan' : 'transparent'}
+                              <input type="file" accept="image/*"
+                                     onChange={e => upload(d.id, null, e.target.files?.[0], f.id)} />
+                            </figcaption>
+                          </figure>
+                        </React.Fragment>
                       ))}
                       {(isPvc(d) || isGeneric(d)) && d.extra && (
                         <figure>
@@ -723,6 +771,10 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                       patch(d.id,{imageAssociationIssues:[]})
                       setSkipAdded(current=>{const next=new Set(current);next.delete(d.id);return next})
                     }}>Sahkan produk, kekalkan gambar rujukan</button>}
+                    {d.photoQualityIssues?.length>0 && <button type="button" onClick={()=>{
+                      patch(d.id,{photoQualityIssues:[]})
+                      setSkipAdded(current=>{const next=new Set(current);next.delete(d.id);return next})
+                    }}>Saya sudah semak gambar asal dan hasil</button>}
                   </div>
                 )
               })}

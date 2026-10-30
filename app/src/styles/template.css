@@ -258,6 +258,8 @@
 .dp-photo img, .dp-drawing-frame img {
   display: block; width: 100%; height: 100%; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain;
 }
+/* Contrast is presentation metadata, not baked into the transparent asset. */
+img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
 .dp-variants { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; align-items: center; gap: 1.5mm; }
 .dp-variants figure { flex: 1 1 0; min-width: 0; min-height: 0; height: 100%; margin: 0; display: grid; grid-template-rows: minmax(0, 1fr) 6mm; }
 .dp-variants img { display: block; width: 100%; height: auto; max-height: 100%; min-width: 0; min-height: 0; aspect-ratio: 1.55; padding: 3mm; box-sizing: border-box; object-fit: contain; align-self: center; }
