@@ -29,6 +29,7 @@ import { validateImportedAssociations } from './image-association.mjs'
 import {matchesRenderedPhoto} from './native-photo-evidence.mjs'
 import { ocr, shutdownOcr } from './ocr.mjs'
 import { suggestDestination, suggestedCatalogue } from '../src/lib/route.js'
+import { popplerTool } from './poppler.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -42,7 +43,7 @@ const execFileAsync = promisify(execFile)
  */
 async function run(cmd, args) {
   try {
-    return await execFileAsync(cmd, args)
+    return await execFileAsync(popplerTool(cmd), args)
   } catch (e) {
     const said = String(e.stderr ?? '').split('\n').map(s => s.trim()).filter(Boolean)
     const why = said.length ? said.slice(0, 2).join(' ') : `${cmd} exited with code ${e.code ?? '?'}`

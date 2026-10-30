@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 import { access, readFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { readImage } from './imageops.mjs'
+import { popplerTool } from './poppler.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -102,7 +103,7 @@ export async function extractNativePdfImages(pdfPath, outputDir, onProgress = ()
   const prefix = join(outputDir, 'native.html')
   try {
     onProgress('Checking for embedded PDF product images…')
-    await execFileAsync('pdftohtml', ['-xml', '-hidden', '-nodrm', pdfPath, prefix], {
+    await execFileAsync(popplerTool('pdftohtml'), ['-xml', '-hidden', '-nodrm', pdfPath, prefix], {
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
     })
