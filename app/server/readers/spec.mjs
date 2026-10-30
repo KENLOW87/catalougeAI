@@ -872,8 +872,53 @@ export async function readWithSpec(page, spec) {
     delete winner.__reject
     delete winner.__bounds
     delete winner.__warnings
+    const anchorIndex = anchors.indexOf(a)
+    winner.__variantGroup = candidateKinds[0]?.variantGroupByAnchor?.[anchorIndex] ?? null
+    winner.__variantLabel = candidateKinds[0]?.variantLabelByAnchor?.[anchorIndex] ?? null
     products.push(winner)
   }
+
+  // A repeated row can be a dimension/finish variation under one numbered
+  // product badge. Combine only groups explicitly declared by the source spec;
+  // name proximity alone is not sufficient evidence and would merge genuine
+  // products such as separately numbered Flat Bars.
+  const groupedProducts = []
+  const variantGroups = new Map()
+  for (const product of products) {
+    const group = product.__variantGroup
+    if (!group) { groupedProducts.push(product); continue }
+    let combined = variantGroups.get(group)
+    const variant = {
+      name: product.__variantLabel || `Variation ${variantGroups.size + 1}`,
+      photo: product.photo ?? null,
+      drawing: product.drawing ?? null,
+      sourceBox: product.sourceBox ?? null,
+      sourceDrawingBox: product.sourceDrawingBox ?? null,
+      third: product.third ?? '',
+    }
+    if (!combined) {
+      combined = {
+        ...product,
+        photo: null,
+        drawing: null,
+        finishes: [],
+        variantTechnical: true,
+        productShape: 'generic',
+      }
+      delete combined.__variantGroup
+      delete combined.__variantLabel
+      variantGroups.set(group, combined)
+      groupedProducts.push(combined)
+    }
+    combined.finishes.push(variant)
+    const labels = combined.finishes.map(item => item.name).filter(Boolean)
+    const material = /carbon\s+crystal/i.test(combined.finishes.map(item => item.third).join(' ')) ? ' / Carbon Crystal' : ''
+    combined.third = labels.length ? `Thickness : ${labels.join(' / ')}${material}` : combined.third
+    if (product.supportStrip) combined.supportStrip = product.supportStrip
+    if (product.supportCaption) combined.supportCaption = product.supportCaption
+    if (product.examples?.length) combined.examples = [...(combined.examples ?? []), ...product.examples]
+  }
+  products.splice(0, products.length, ...groupedProducts)
 
   // Never auto-correct a measurement: report the disagreement instead.
   const allFields = (spec.kinds ?? [{ fields: spec.fields }]).flatMap(k => k.fields ?? [])

@@ -22,18 +22,31 @@ const accessoryPage = (page, rows, headerEvidence = null) => ({
   id: `accessories-march-${page}`,
   title: `Accessories March 2026 page ${page}`,
   category: 'accessories',
+  // These rows use the default catalogue fields even though they live inside
+  // the single Accessories catalogue. Without this explicit shape marker the
+  // importer coerced them into the LED schema and silently discarded size and
+  // material text.
+  productShape: 'generic',
   builtin: true,
   anchor: { type: 'fixed', pages: [page], headerEvidence, trustHeader: Boolean(headerEvidence), boxes: rows.map(r => ({ x: 0, y: r.y, w: 210, h: r.h })) },
   // These are source-declared display/installation images, not extra products.
   // Keep them attached to the row that owns them so the renderer can place them
   // beside/under the product without losing the original scene.
-  kinds: [{ id: `accessories-row-${page}`, fields: [
+  kinds: [{ id: `accessories-row-${page}`, productShape: 'generic', fields: [
     { key: 'name', type: 'text', required: true, valueByAnchor: rows.map(r => r.name), box: { x: 0, y: 0, w: 210, h: 1 } },
     { key: 'subtitle', type: 'text', required: true, valueByAnchor: rows.map(r => r.size), box: { x: 0, y: 0, w: 210, h: 1 } },
     { key: 'third', type: 'text', valueByAnchor: rows.map(r => r.third ?? ''), box: { x: 0, y: 0, w: 210, h: 1 } },
     { key: 'photo', type: 'photo', source: true, boxByAnchor: rows.map(r => r.photo) },
     { key: 'drawing', type: 'lineart', source: true, boxByAnchor: rows.map(r => r.drawing) },
-  ], examplesByAnchor: rows.map(r => r.examples ?? []) }],
+  ],
+  // Repeated printed rows under one numbered badge are thickness variations of
+  // one product, not duplicate products. The spec engine combines these after
+  // cropping so every variation keeps its own photo and dimension reference.
+  variantGroupByAnchor: rows.map(r => r.variantGroup ?? null),
+  variantLabelByAnchor: rows.map(r => r.variantLabel ?? null),
+  supportStripByAnchor: rows.map(r => r.supportStrip ?? null),
+  supportCaptionByAnchor: rows.map(r => r.supportCaption ?? ''),
+  examplesByAnchor: rows.map(r => r.examples ?? []) }],
 })
 
 const ACCESSORIES_MARCH_SPECS = [
@@ -49,19 +62,18 @@ const ACCESSORIES_MARCH_SPECS = [
     { y: 175, h: 72, name: 'L Profile', size: `Size : 9'5"`, third: 'PVC Marble', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 36 } },
   ], /PVCMARBLE/),
   accessoryPage(4, [
-    { y: 29, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
-    { y: 100, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
-    { y: 171, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
-    { y: 234, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
+    { y: 29, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', variantGroup: 'i-profile', variantLabel: '5mm', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
+    { y: 100, h: 71, name: 'I Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', variantGroup: 'i-profile', variantLabel: '8mm', photo: { x: 58, y: 8, w: 148, h: 56 }, drawing: { x: 10, y: 28, w: 43, h: 34 } },
+    { y: 171, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', variantGroup: 'end-profile', variantLabel: '5mm', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
+    { y: 234, h: 63, name: 'END Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', variantGroup: 'end-profile', variantLabel: '8mm', photo: { x: 58, y: 8, w: 148, h: 49 }, drawing: { x: 10, y: 28, w: 43, h: 31 } },
   ], /FOAMPANEL/),
   accessoryPage(5, [
-    { y: 29, h: 82, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 37 } },
-    { y: 111, h: 88, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 42 } },
+    { y: 29, h: 82, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', variantGroup: 'corner-profile', variantLabel: '5mm', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 37 } },
+    { y: 111, h: 88, name: 'CORNER Profile', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', variantGroup: 'corner-profile', variantLabel: '8mm', photo: { x: 58, y: 8, w: 148, h: 55 }, drawing: { x: 10, y: 28, w: 43, h: 42 }, supportStrip: { x: 0, y: 199, w: 210, h: 98 }, supportCaption: 'CORNER Profile — additional original profile reference' },
   ], /FOAMPANEL/),
   accessoryPage(6, [
-    { y: 29, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 } },
-    { y: 101, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 } },
-    { y: 173, h: 124, name: 'Aluminum End Bend Features', size: `Size : 9'5"`, third: 'Thickness : 5mm / 8mm / Carbon Crystal', photo: { x: 72, y: 8, w: 132, h: 105 }, drawing: { x: 10, y: 28, w: 53, h: 70 } },
+    { y: 29, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 5mm / Carbon Crystal', variantGroup: 'aluminum-end-bend', variantLabel: '5mm', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 } },
+    { y: 101, h: 72, name: 'Aluminum End Bend', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', variantGroup: 'aluminum-end-bend', variantLabel: '8mm', photo: { x: 72, y: 8, w: 132, h: 49 }, drawing: { x: 10, y: 28, w: 53, h: 32 }, supportStrip: { x: 0, y: 173, w: 210, h: 124 }, supportCaption: 'Aluminum End Bend — original feature and bending guide' },
   ], /FOAMPANEL/),
   accessoryPage(7, [
     { y: 29, h: 128, name: 'T Micro-Seam Aluminium Black', size: `Size : 9'5"`, third: 'Thickness : 8mm / Carbon Crystal', photo: { x: 108, y: 22, w: 88, h: 73 }, drawing: { x: 10, y: 28, w: 60, h: 45 } },

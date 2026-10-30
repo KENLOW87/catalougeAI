@@ -6,6 +6,8 @@ These rules record the user's instruction to preserve completed fixes and avoid 
 
 ## Preserve existing fixes
 
+- Accessories (March 2026) uses one Accessories catalogue but pages 2-12 retain the generic profile fields rather than being coerced into the LED schema. On Foam Panel source pages 4-6, repeated 5mm/8mm rows under one numbered badge are ONE product with two technical variations; each variation keeps its own original product photo and complete dimension drawing. The unnumbered CORNER lower reference and "Aluminum End Bend Features" are supporting source material, never products. Repair the already-saved source-page records on load without requiring another upload, and never merge same-name rows outside these explicit source pages. Future local extraction should yield 36 products total, with source order preserved and no paid AI needed to recognize the layout.
+
 - Catalogue AI's own exported/printed PDFs are outputs, never source PDFs. Detect them from embedded GEOMETRA/HeadlessChrome/Skia metadata immediately after upload and reject them before rendering, extraction or any paid AI fallback. Never let a re-uploaded export partially replace a working catalogue. Keep the original supplier import metadata/recovery source so the user is not asked to repeat uploads after this mistake.
 
 - Accessories (March 2026) and Wainscoting are fully covered known-source imports. Once identified by filename/layout, keep extraction and optional example grouping entirely local: incomplete geometry must not enable paid page-reading or image-example AI fallbacks. Preserve unread catalogue material as local full pages and report it for review instead of spending credit.

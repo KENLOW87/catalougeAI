@@ -331,7 +331,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   // finishes). Which one it is comes from the reader, not from guessing.
   const BUILTIN_CATS = ['accessories', 'accessories-led', 'pvc-marble']
   const isPvc = d => Array.isArray(d.variants)
-  const isGeneric = d => d.categoryId != null && !BUILTIN_CATS.includes(d.categoryId)
+  const isGeneric = d => d.productShape === 'generic' || (d.categoryId != null && !BUILTIN_CATS.includes(d.categoryId))
 
   const recheck = d => {
     if(d.imageAssociationIssues?.length)return ['padanan gambar perlu disemak',...d.imageAssociationIssues.map(referenceLabel)]
@@ -343,6 +343,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     if (isGeneric(d)) return [
       !d.name && 'no name',
       d.wantsDrawing && !d.drawing && 'no dimension drawing',
+      d.variantTechnical && (d.finishes ?? []).some(f => !f.drawing) && 'a variation has no dimension drawing',
       !d.photo && !(d.finishes ?? []).some(f => f.photo) && 'no photos',
     ].filter(Boolean)
     if (isPvc(d)) return [

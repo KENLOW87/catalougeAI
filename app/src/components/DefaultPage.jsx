@@ -45,6 +45,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
   const checked = checkedExamples?.key === checkKey && checkedExamples?.source === p.examples && checkedExamples?.extra === p.extra
   const examples = checked ? checkedExamples.examples : candidates.filter(example => !isDimensionReference(example))
   const variants = (p.finishes ?? p.variants ?? []).filter(v => v?.photo)
+  const technicalVariants = p.variantTechnical ? variants : []
   const sideBySide = examplesBesideProduct(examples)
   const technicalPair = p.layoutPairGroup === 'aluminium-corners' && showDrawing && !examples.length
   const exampleColumns = Math.min(sideBySide ? 2 : 4, examples.length)
@@ -53,9 +54,19 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
-      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length ? 'dp-visuals--variants' : ''} ${stackedVisuals ? 'dp-visuals--stacked' : ''} ${featuredVisuals ? 'dp-visuals--featured' : ''}`}>
+      <div className={`dp-visuals ${showDrawing ? 'dp-visuals--paired' : ''} ${variants.length && !technicalVariants.length ? 'dp-visuals--variants' : ''} ${technicalVariants.length ? 'dp-visuals--technical-variants' : ''} ${stackedVisuals ? 'dp-visuals--stacked' : ''} ${featuredVisuals ? 'dp-visuals--featured' : ''}`}>
         <div className="dp-photo">
-          {variants.length ? (
+          {technicalVariants.length ? (
+            <div className="dp-technical-variants" aria-label={`${p.name} thickness variations`}>
+              {technicalVariants.map((v, i) => <figure key={v.id || i}>
+                <div className="dp-technical-variant-media">
+                  {v.drawing && <DrawingImage src={v.drawing} />}
+                  <img className={v.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={v.photo} alt={`${p.name} ${v.name || `variation ${i + 1}`}`} />
+                </div>
+                <figcaption>{v.name || `Variation ${i + 1}`}</figcaption>
+              </figure>)}
+            </div>
+          ) : variants.length ? (
             <div className="dp-variants" aria-label={`${p.name} variations`}>
               {variants.map((v, i) => <figure key={v.id || i}>
                 <img className={v.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={v.photo} alt={v.name || `${p.name} variation ${i + 1}`} />
@@ -66,7 +77,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
             ? <img className={p.photoDisplayBackground === 'dark-neutral' ? 'photo-contrast-dark' : undefined} src={p.photo} alt={p.name} />
             : <span className="dp-missing">no photo</span>}
         </div>
-        {showDrawing && (
+        {showDrawing && !technicalVariants.length && (
           <div className="dp-drawing-frame">
             {examples.length ? <img src={p.drawing} alt="Dimension drawing" /> : <DrawingImage src={p.drawing} />}
           </div>
@@ -108,7 +119,11 @@ function SourceSupportBand({ products, compact = false }) {
     {entries.map(({p,examples,key})=><section className="dp-source-support-entry" key={key} data-support-owner={p.name}
       style={p.supportStrip&&examples.some(e=>e.origin==='manual-display')?{gridTemplateRows:compact?'4mm auto 36mm':'4mm minmax(0,1fr) minmax(0,1fr)'}:undefined}>
       <div className="dp-source-support-title">{p.supportCaption||`${p.name}${p.supportStrip?'':` — ${exampleHeading(examples)}`}`}</div>
-      {p.supportStrip && <img className="dp-source-support-strip" src={p.supportStrip} alt={`${p.name} — penerangan asal`} />}
+      {p.supportStrip && <div className={`dp-source-support-original ${(p.sourceReferences ?? []).some(reference => reference.role === 'source-reference' && reference.image) ? 'dp-source-support-original--split' : ''}`}>
+        {(p.sourceReferences ?? []).filter(reference => reference.role === 'source-reference' && reference.image).map((reference, index) =>
+          <img key={index} className="dp-source-support-reference" src={reference.image} alt={reference.caption || `${p.name} — rujukan asal`} />)}
+        <img className="dp-source-support-strip" src={p.supportStrip} alt={`${p.name} — penerangan asal`} />
+      </div>}
       {(!p.supportStrip || examples.some(e=>e.origin==='manual-display')) &&
         <div className="dp-source-support-gallery" style={{gridTemplateColumns:`repeat(${Math.min(4,examples.length)}, minmax(0, 1fr))`}}>
           {examples.filter(e=>!p.supportStrip||e.origin==='manual-display').map((e,i)=><figure key={i}><img src={e.image} alt={e.caption||`${p.name} — gambar sokongan ${i+1}`}/>{e.caption&&<figcaption>{e.caption}</figcaption>}</figure>)}

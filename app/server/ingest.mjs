@@ -491,6 +491,8 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     layoutRowGroup:p.layoutRowGroup,
     supportStrip:p.supportStrip,
     supportCaption:p.supportCaption,
+    productShape:p.productShape ?? spec?.productShape ?? null,
+    variantTechnical:Boolean(p.variantTechnical),
     sourcePreserved: Boolean(p.sourcePreserved),
     sourcePage: pageNo,
     readBy: 'rules',
@@ -504,7 +506,7 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
   // their layout captured. Pass those through rather than forcing it into one of the
   // two built-in shapes, which would silently drop everything that does not fit.
   const BUILTIN = ['accessories', 'accessories-led', 'pvc-marble']
-  if (!BUILTIN.includes(category)) {
+  if (!BUILTIN.includes(category) || base.productShape === 'generic') {
     const finishes = (p.finishes ?? p.variants ?? []).map((f, k) => ({ id: `${base.id}f${k}`, ...f }))
     const draft = {
       ...base,
@@ -518,10 +520,12 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     // photo and a code, not an engineering drawing — demanding one would block
     // every product for a field the source page does not contain. The flag is
     // carried on the draft so the review screen applies the same rule.
-    draft.wantsDrawing = (spec?.fields ?? []).some(f => f.type === 'lineart')
+    const specFields = (spec?.kinds ?? [{ fields: spec?.fields }]).flatMap(kind => kind.fields ?? [])
+    draft.wantsDrawing = !draft.variantTechnical && specFields.some(f => f.type === 'lineart')
     draft.issues = [
       !draft.name && 'no name was read',
       draft.wantsDrawing && !draft.drawing && 'no dimension drawing',
+      draft.variantTechnical && finishes.some(f => !f.drawing) && 'a variation has no dimension drawing',
       !draft.photo && !finishes.some(f => f.photo) && 'no photos',
     ].filter(Boolean)
     return draft

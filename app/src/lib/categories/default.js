@@ -107,7 +107,13 @@ export function defaultCategoryFor(parent, chrome = null) {
                 sourceProducts.filter(p => !(p.finishes?.length > 1 || p.variants?.length > 1 || /^led\s*-\s*0?8$/i.test(p.name || ''))),
                 ...sourceProducts.filter(p => p.finishes?.length > 1 || p.variants?.length > 1 || /^led\s*-\s*0?8$/i.test(p.name || '')).map(p => [p]),
               ].filter(row => row.length)
-            : sourceProducts.map(p => [p])
+            : sourceProducts.flatMap(p => {
+                const productRow = [p]
+                if (!p.supportStrip) return [productRow]
+                const supportRow = []
+                supportRow.supportFor = [p]
+                return [productRow, supportRow]
+              })
           const sourceGap = sourcePage === 1 ? 3 : 5
           // The imported LED source page has a normal product row followed by
           // the LED-08 variation row. Equal halves leave a large artificial
