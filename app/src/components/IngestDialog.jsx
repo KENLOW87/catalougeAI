@@ -152,8 +152,11 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
         owner[`${key}Transparent`] = cleaned.dataUrl
         owner[`${key}Quality`] = quality
         owner[`${key}DisplayBackground`] = quality.displayBackground
-        owner[key] = quality.accepted ? cleaned.dataUrl : original
-        owner[`${key}Treatment`] = quality.accepted ? 'product-only-local-v2-validated' : 'original-quality-fallback'
+        // A doubtful cutout must never make the whole product disappear. Keep the
+        // transparent candidate for comparison, but publish the intact original
+        // until the administrator explicitly accepts a better result.
+        owner[key] = quality.needsReview ? original : cleaned.dataUrl
+        owner[`${key}Treatment`] = quality.needsReview ? 'original-quality-fallback' : 'product-only-local-v2-validated'
         const review = quality.findings.filter(finding => finding.severity !== 'info').map(finding => ({
           ...finding, asset: key, ownerId: owner.id ?? product.id, label,
         }))
@@ -165,13 +168,13 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       }
     }
     result.warnings = warnings
-    return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 && !(p.photoTreatmentErrors?.length) && !(p.photoQualityIssues?.length) }))
+    return found.map(p => ({ ...p, keep: (p.issues ?? []).length === 0 && !(p.photoTreatmentErrors?.length) }))
   }
 
   const showResult = async result => {
     const found = await prepareImportedPhotos(result)
     setDrafts(found)
-    setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length || p.photoQualityIssues?.length).map(p=>p.id)))
+    setSkipAdded(new Set(found.filter(p=>p.imageAssociationIssues?.length).map(p=>p.id)))
     setWarnings(result.warnings ?? [])
     setChrome(result.chrome ?? null)
     setRouting(result.routing ?? null)
@@ -333,7 +336,6 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   const recheck = d => {
     if(d.imageAssociationIssues?.length)return ['padanan gambar perlu disemak',...d.imageAssociationIssues.map(referenceLabel)]
     if (d.photoTreatmentErrors?.length) return d.photoTreatmentErrors
-    if (d.photoQualityIssues?.length) return d.photoQualityIssues.map(issue => `${issue.label}: ${issue.message}`)
     // A page kept whole is never "missing" anything — it IS the page.
     if (d.isPage) return []
     // A drawing is only required where the layout actually has one — a sheet
@@ -667,7 +669,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                 }
 
                 return (
-                  <div className={`draft ${issues.length ? 'draft--bad' : ''}`} key={d.id}>
+                  <div className={`draft ${issues.length || d.photoQualityIssues?.length ? 'draft--bad' : ''}`} key={d.id}>
                     <label className="draft-keep">
                       <input type="checkbox" checked={!skipAdded.has(d.id)} title="add this new product"
                              onChange={() => toggle(setSkipAdded, d.id)} />
@@ -767,6 +769,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
                     </div>
 
                     {issues.length > 0 && <p className="draft-issues">needs: {issues.join(', ')}</p>}
+                    {d.photoQualityIssues?.length > 0 && <p className="draft-issues">gambar asal digunakan: {d.photoQualityIssues.map(issue => issue.message).join(' · ')}</p>}
                     {d.imageAssociationIssues?.length>0 && <button type="button" onClick={()=>{
                       patch(d.id,{imageAssociationIssues:[]})
                       setSkipAdded(current=>{const next=new Set(current);next.delete(d.id);return next})
