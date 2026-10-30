@@ -24,7 +24,7 @@ function Variant({ v }) {
 
 function Row({ p, editable, onEdit, onDelete, highlighted }) {
   return (
-    <div className={`pvc-row ${(p.exception || p.sourceTall) ? 'pvc-row--tall' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`}
+    <div className={`pvc-row ${(p.exceptions?.length || p.sourceTall) ? 'pvc-row--tall' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`}
          id={editable ? `product-${p.id}` : undefined}>
       <div className="pvc-left">
         <Badge n={p.slot} variant="pvc" />
@@ -43,11 +43,13 @@ function Row({ p, editable, onEdit, onDelete, highlighted }) {
         {p.extra && <img className="pvc-extra" src={p.extra} alt="" />}
       </div>
 
-      {p.exception && (
-        <div className="pvc-exception">
-          <Variant v={p.exception.variant} />
-          {p.exception.drawing && <img className="pvc-exdrawing" src={p.exception.drawing} alt="" />}
-          {p.exception.note && <div className="pvc-exnote">{p.exception.note}</div>}
+      {p.exceptions?.length > 0 && (
+        <div className={`pvc-exception ${p.exceptions.length > 1 ? 'pvc-exception--multi' : ''}`}>
+          {p.exceptions.map((ex, i) => <React.Fragment key={ex.variant?.id ?? i}>
+            <Variant v={ex.variant} />
+            {ex.drawing && <img className="pvc-exdrawing" src={ex.drawing} alt="" />}
+          </React.Fragment>)}
+          {p.exceptions[0]?.note && <div className="pvc-exnote">{p.exceptions[0].note}</div>}
         </div>
       )}
 

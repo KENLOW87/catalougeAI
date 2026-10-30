@@ -155,22 +155,19 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
       const sourceIndex = page.sourcePage === 2 ? index : page.sourcePage === 3 ? index + 4 : -1
       const sourceTemplate = !sourceVariants.length && PVC_SEED[sourceIndex]
       const sourceTemplateVariants = sourceTemplate?.variants ?? []
-      const cornerBlackAsFourth = sourceIndex === 4 && sourceTemplate?.extra
       const variants = sourceVariants.length
         ? sourceVariants
-        : (cornerBlackAsFourth
-          ? [...sourceTemplateVariants.slice(0, 3), { id: `${p.id}-corner-black`, photo: sourceTemplate.extra, name: 'Black' }]
-          : (sourceTemplateVariants.length ? sourceTemplateVariants : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : [])))
-      const extra = cornerBlackAsFourth ? null : (sourceTemplate?.extra ?? (typeof p.extra === 'string'
+        : (sourceTemplateVariants.length ? sourceTemplateVariants : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : []))
+      const extra = sourceTemplate?.extra ?? (typeof p.extra === 'string'
         ? p.extra
-        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null)))
+        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null))
       const rawSize = p.size ?? p.subtitle ?? ''
       return { ...p,
       size: String(rawSize).replace(/^size\s*:\s*/i, ''),
       series: p.series || p.third || 'PVC Marble',
       variants,
       extra,
-      exception: p.exception ?? sourceTemplate?.exception ?? null,
+      exceptions: p.exceptions ?? sourceTemplate?.exceptions ?? null,
       sourceComposite: !sourceTemplate && !sourceVariants.length && Boolean(p.photo),
       sourceTall: !sourceTemplate && !sourceVariants.length && Boolean(p.photo) && page.sourcePage === 3 && index === 1,
       }

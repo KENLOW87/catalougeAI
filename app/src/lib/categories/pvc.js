@@ -41,7 +41,7 @@ export const blankPvcProduct = () => ({
   drawing: null,
   variants: [],
   extra: null,
-  exception: null,
+  exceptions: null,
 })
 
 export const blankVariant = () => ({
@@ -57,50 +57,58 @@ const v = (id, name, i) => ({ id: `${id}-v${i}`, name, photo: `/assets/pvc/${id}
 export const PVC_SEED = [
   {
     id: 'h-profile', name: 'H Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/h-profile-drawing.png', extra: null, exception: null,
+    drawing: '/assets/pvc/h-profile-drawing.png', extra: null, exceptions: null,
     variants: [v('h-profile', 'Silver', 0), v('h-profile', 'Rose Gold', 1), v('h-profile', 'Gold', 2), v('h-profile', 'Black', 3)],
   },
   {
     id: 't-profile', name: 'T Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/t-profile-drawing.png', extra: '/assets/pvc/t-profile-extra.png', exception: null,
+    drawing: '/assets/pvc/t-profile-drawing.png', extra: '/assets/pvc/t-profile-extra.png', exceptions: null,
     variants: [v('t-profile', 'Silver', 0), v('t-profile', 'Rose Gold', 1), v('t-profile', 'Gold', 2), v('t-profile', 'Black', 3)],
   },
   {
     id: 'end-profile', name: 'END Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/end-profile-drawing.png', extra: '/assets/pvc/end-profile-extra.png', exception: null,
+    drawing: '/assets/pvc/end-profile-drawing.png', extra: '/assets/pvc/end-profile-extra.png', exceptions: null,
     variants: [v('end-profile', 'Silver', 0), v('end-profile', 'Rose Gold', 1), v('end-profile', 'Gold', 2), v('end-profile', 'Black', 3)],
   },
   {
     // Only three finishes — no Rose Gold. The variant list is genuinely variable length.
     id: 'w-profile', name: 'W Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/w-profile-drawing.png', extra: '/assets/pvc/w-profile-extra.png', exception: null,
+    drawing: '/assets/pvc/w-profile-drawing.png', extra: '/assets/pvc/w-profile-extra.png', exceptions: null,
     variants: [v('w-profile', 'Silver', 0), v('w-profile', 'Gold', 1), v('w-profile', 'Black', 2)],
   },
   {
     id: 'corner-profile', name: 'CORNER Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/corner-profile-drawing.png', extra: '/assets/pvc/corner-profile-extra.png', exception: null,
+    drawing: '/assets/pvc/corner-profile-drawing.png', extra: '/assets/pvc/corner-profile-extra.png', exceptions: null,
     variants: [v('corner-profile', 'Silver', 0), v('corner-profile', 'Rose Gold', 1), v('corner-profile', 'Gold', 2), v('corner-profile', 'Black', 3)],
   },
   {
-    // Carries an exception: the White finish is only made in a different size, so it
-    // gets its own photo, its own dimension drawing and a printed note.
+    // Carries an exception: the White finish is only made in two other sizes (15mm
+    // and 20mm, both different from the product's own 14mm), each with its own
+    // photo and dimension drawing, sharing one printed note.
     id: 'l-profile-14', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
     drawing: '/assets/pvc/l-profile-14-drawing.png', extra: null,
     variants: [v('l-profile-14', 'Silver', 0), v('l-profile-14', 'Rose Gold', 1), v('l-profile-14', 'Gold', 2), v('l-profile-14', 'Black', 3)],
-    exception: {
-      variant: { id: 'l14-white', name: 'White', photo: '/assets/pvc/l-profile-14-white.png' },
-      drawing: '/assets/pvc/l-profile-14-white-drawing.png',
-      note: '(This size only for White Color)',
-    },
+    exceptions: [
+      {
+        variant: { id: 'l14-white-15', name: 'White', photo: '/assets/pvc/l-profile-14-white-15.png' },
+        drawing: '/assets/pvc/l-profile-14-white-15-drawing.png',
+        note: '(This size only for White Color)',
+      },
+      {
+        variant: { id: 'l14-white-20', name: 'White', photo: '/assets/pvc/l-profile-14-white.png' },
+        drawing: '/assets/pvc/l-profile-14-white-drawing.png',
+        note: '(This size only for White Color)',
+      },
+    ],
   },
   {
     id: 'l-profile-10', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/l-profile-10-drawing.png', extra: null, exception: null,
+    drawing: '/assets/pvc/l-profile-10-drawing.png', extra: null, exceptions: null,
     variants: [v('l-profile-10', 'Silver', 0), v('l-profile-10', 'Rose Gold', 1), v('l-profile-10', 'Gold', 2), v('l-profile-10', 'Black', 3)],
   },
 ]
 
-export const rowHeight = p => (p.exception ? PVC_GEOMETRY.rowExceptionH : PVC_GEOMETRY.rowH)
+export const rowHeight = p => (p.exceptions?.length ? PVC_GEOMETRY.rowExceptionH : PVC_GEOMETRY.rowH)
 
 /**
  * PVC Marble reflow: one product per full-width row, flowing top-down.
