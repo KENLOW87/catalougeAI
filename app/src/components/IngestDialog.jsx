@@ -349,7 +349,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
 
   const strip = ({ keep, issues, categoryId, wantsDrawing, _spec, _kind, ...p }) => p
 
-  const commit = () => {
+  const commit = async () => {
     // A brand-new catalogue gets its real id here, at the moment it is confirmed.
     // Nothing is created while the admin is still deciding.
     const created = creating
@@ -366,8 +366,17 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       const key = cat === NEW && created ? created.id : cat
       result[key] = merged.map(strip).map(d => ({ ...d, categoryId: key }))
     }
-    onCommit(result, chrome, created)
-    activityStatus(activityJob.current, 'applied', 'Upload review saved')
+    try {
+      setProgress('Saving catalogue…')
+      setPhase('working')
+      await onCommit(result, chrome, created)
+      activityStatus(activityJob.current, 'applied', 'Upload review saved')
+    } catch (err) {
+      const message = `Catalogue was not saved: ${err.message ?? err}`
+      activityStatus(activityJob.current, 'failed', message)
+      setError(message)
+      setPhase('error')
+    }
   }
 
   // Apply is refused while a new catalogue has no name — an unnamed catalogue

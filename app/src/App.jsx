@@ -393,14 +393,24 @@ export default function App() {
   // The import dialog hands back a FINAL list per category — already reconciled
   // against what was here and put in the PDF's order. It is not appended: appending
   // is what produced duplicates and left a re-imported catalogue out of sequence.
-  const applyImported = (byCat, chrome, created = null) => {
+  const applyImported = async (byCat, chrome, created = null) => {
     // A catalogue the admin created during review. It is an ordinary catalogue from
     // here on: listed, editable, exported, printed on the default template. Created
     // at the moment of confirmation — never while they were still deciding.
-    if (created?.id) {
+    const createdMatchesBuiltIn = created?.id && (parentById(created.id) || CATEGORIES[created.id])
+    if (created?.id && !createdMatchesBuiltIn) {
       const entry = { id: created.id, title: created.title, edition: '', children: [], custom: true }
+      await saveCustomCategory(entry)
       setCustomCategories(prev => ({ ...prev, [created.id]: entry }))
-      saveCustomCategory(entry).catch(e => setBusy(`New catalogue NOT saved: ${e.message}`))
+    } else if (createdMatchesBuiltIn) {
+      // Typing the exact name of a built-in family means restore that family;
+      // never create a second custom catalogue with the same id/title.
+      await removeCustomCategory(created.id)
+      setCustomCategories(prev => {
+        const next = { ...prev }
+        delete next[created.id]
+        return next
+      })
     }
     // A catalogue the admin had deleted (e.g. PU Stone, after an earlier import that
     // found nothing) is still a family the routing can confidently recognise. Landing
@@ -413,16 +423,20 @@ export default function App() {
         for (const id of revived) delete next[id]
         return next
       })
-      Promise.all(revived.map(id => restoreCategory(id)))
-        .catch(e => setBusy(`Catalogue NOT fully restored — ${e.message}`))
+      await Promise.all(revived.map(id => restoreCategory(id)))
     }
+
+    // Persist every imported destination before closing the review. Relying on
+    // the active-category React effect left a race where a quick reload killed
+    // the IndexedDB write and all newly applied products disappeared.
+    await Promise.all(Object.entries(byCat).map(([id, list]) => saveCatalogue(id, list)))
     setByCategory(prev => ({ ...prev, ...byCat }))
     // A header only belongs to a catalogue that has no bespoke template of its own.
     if (chrome) {
       for (const id of Object.keys(byCat)) {
         if (CATEGORIES[id]) continue
         setChromeByCategory(prev => ({ ...prev, [id]: chrome }))
-        saveChrome(id, chrome).catch(e => setBusy(`Header NOT saved: ${e.message}`))
+        await saveChrome(id, chrome)
       }
     }
     const ids = Object.keys(byCat)
@@ -734,8 +748,8 @@ export default function App() {
             setIngesting(false)
             setBotNote({ id: `cancel-${Date.now()}`, text: 'Import cancelled — nothing was changed.' })
           }}
-          onCommit={(byCat, chrome, created) => {
-            applyImported(byCat, chrome, created)
+          onCommit={async (byCat, chrome, created) => {
+            await applyImported(byCat, chrome, created)
             setShowDashboard(false)
             setSidebarOpen(true)
             setIngesting(false)

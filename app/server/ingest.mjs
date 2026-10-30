@@ -55,6 +55,42 @@ async function run(cmd, args) {
   }
 }
 
+/**
+ * Catalogue AI's printed PDF is a presentation output, not an import source.
+ * Its pages have already been repaginated, so feeding it back through the
+ * source-layout readers can look superficially valid while losing products.
+ * Detect it from embedded metadata before rendering or invoking any AI.
+ */
+export function isCatalogueAiExportMetadata(info = '') {
+  const text = String(info)
+  const title = text.match(/^Title:\s*(.+)$/mi)?.[1]?.trim() ?? ''
+  const creator = text.match(/^Creator:\s*(.+)$/mi)?.[1]?.trim() ?? ''
+  const producer = text.match(/^Producer:\s*(.+)$/mi)?.[1]?.trim() ?? ''
+  return /^GEOMETRA\s*[—–-]?\s*Catalogue AI$/i.test(title) &&
+    (/HeadlessChrome/i.test(creator) || /Skia\/PDF/i.test(producer))
+}
+
+export function isKnownLocalCatalogueFilename(filename = '') {
+  return /wainscoting/i.test(filename) ||
+    /accessories\s*\(?(?:march|mac)\b/i.test(filename)
+}
+
+async function rejectCatalogueAiExport(pdfPath) {
+  let info = ''
+  try {
+    info = (await run('pdfinfo', [pdfPath])).stdout
+  } catch {
+    // Keep imports working on installations where pdftoppm exists but pdfinfo
+    // does not. This guard is an extra safety check, not a new dependency.
+    return
+  }
+  if (!isCatalogueAiExportMetadata(info)) return
+  throw new Error(
+    'This PDF was exported by Catalogue AI, so it cannot be used as a source PDF. ' +
+    'Uploading it again would lose products because its pages have already been rearranged. ' +
+    'Choose the original supplier PDF instead; no AI credit was used for this file.')
+}
+
 const VISION_DPI = 150     // what Claude looks at - keeps the image within sane token cost
 const ASSET_DPI = 400      // what we actually cut the assets from
 const SCALE = ASSET_DPI / VISION_DPI
@@ -584,6 +620,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         'uploaded is either not a PDF or did not survive the upload intact.')
     }
     await writeFile(pdfPath, bytes)
+    await rejectCatalogueAiExport(pdfPath)
 
     // This is deliberately additive. Text/layout recognition still uses the
     // rendered pages below, while embedded raster objects are kept available
@@ -602,7 +639,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // This catalogue is fully covered by local page readers. If a future
     // geometry regression leaves a page unresolved, keep that page locally
     // instead of silently spending the user's OpenAI credit on a second guess.
-    const localOnlyWainscoting = /wainscoting/i.test(filename)
+    // Both catalogues have complete deterministic readers. Once the source is
+    // identified, neither an incomplete geometry score nor optional example
+    // enrichment may turn a normal upload into a paid vision request.
+    const localOnlyKnownCatalogue = isKnownLocalCatalogueFilename(filename)
     for (let i = 0; i < count; i++) {
       if (shouldStop()) throw new IngestCancelled()
       onProgress(`Reading page ${i + 1} of ${count}…`)
@@ -613,6 +653,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       const assetPage = readImage(assetPages[Math.min(i, assetPages.length - 1)])
       const nativePage = nativePages.find(p => p.number === i + 1) ?? null
       const enrichExamples = async rawProducts => {
+        if (localOnlyKnownCatalogue) return rawProducts
         if(rawProducts.every(p=>p.examplesTrusted))return rawProducts
         if (!process.env.OPENAI_API_KEY || !rawProducts.length) return rawProducts
         if (shouldStop()) throw new IngestCancelled()
@@ -659,7 +700,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       // the local OCR could read, let the configured vision model try the page.
       // Previously any partial local result was accepted and the missing cards
       // could never reach AI. Keep the free local path when no API is available.
-      const localComplete = ruled?.spec && (!hasOpenAICredentials() || ruled.localEvidence ||
+      const localComplete = ruled?.spec && (localOnlyKnownCatalogue || !hasOpenAICredentials() || ruled.localEvidence ||
         ruled.products.length >= Math.max(1, Math.ceil((ruled.anchors?.length ?? ruled.products.length) * 0.8)))
 
       if (localComplete) {
@@ -696,7 +737,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         }
 
         for (const raw of await enrichExamples(ruled.products)) {
-          const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting || raw._spec?.startsWith('wainscoting-'))
+          const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyKnownCatalogue || raw._spec?.startsWith('wainscoting-'))
           // A layout with no category of its own (the shape-based photo grid) lands
           // in whichever catalogue the user had open.
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
@@ -713,10 +754,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       warnings.push(`Page ${i + 1}: no products were read from this page. ${detail}`)
       unread.push(`Page ${i + 1}: ${detail}`)
 
-      if (localOnlyWainscoting) {
+      if (localOnlyKnownCatalogue) {
         const details = extractDetailPhotos(assetPage)
         products.push(keepWholePage(readImage(visionPages[i]), i + 1, intoCategory, details))
-        onProgress(`Page ${i + 1} was kept locally; OpenAI fallback is disabled for this Wainscoting catalogue.`)
+        onProgress(`Page ${i + 1} was kept locally; paid AI fallback is disabled for this known catalogue.`)
         continue
       }
 
@@ -782,7 +823,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
         if (ruled?.spec && ruled.products?.length) {
           const spec = ruled.spec.category ? ruled.spec : { ...ruled.spec, category: intoCategory }
           for (const raw of await enrichExamples(ruled.products)) {
-            const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyWainscoting || raw._spec?.startsWith('wainscoting-'))
+            const p = preferNativePhotos(raw, nativePage, assetPage, localOnlyKnownCatalogue || raw._spec?.startsWith('wainscoting-'))
             products.push(adoptRuleProduct(p, products.length + 1, i + 1, spec))
           }
           warnings.push(`Page ${i + 1}: AI returned no products; kept ${ruled.products.length} local products.`)
