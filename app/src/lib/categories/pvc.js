@@ -82,18 +82,12 @@ export const PVC_SEED = [
     variants: [v('corner-profile', 'Silver', 0), v('corner-profile', 'Rose Gold', 1), v('corner-profile', 'Gold', 2), v('corner-profile', 'Black', 3)],
   },
   {
-    // Carries an exception: the White finish is only made in two other sizes (15mm
-    // and 20mm, both different from the product's own 14mm), each with its own
-    // photo and dimension drawing, sharing one printed note.
+    // Carries the source PDF's one exception: the White finish is shown at 20mm
+    // with its own photo and dimension drawing, plus the printed note.
     id: 'l-profile-14', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
     drawing: '/assets/pvc/l-profile-14-drawing.png', extra: null,
     variants: [v('l-profile-14', 'Silver', 0), v('l-profile-14', 'Rose Gold', 1), v('l-profile-14', 'Gold', 2), v('l-profile-14', 'Black', 3)],
     exceptions: [
-      {
-        variant: { id: 'l14-white-15', name: 'White', photo: '/assets/pvc/l-profile-14-white-15.png' },
-        drawing: '/assets/pvc/l-profile-14-white-15-drawing.png',
-        note: '(This size only for White Color)',
-      },
       {
         variant: { id: 'l14-white-20', name: 'White', photo: '/assets/pvc/l-profile-14-white.png' },
         drawing: '/assets/pvc/l-profile-14-white-drawing.png',

@@ -155,12 +155,18 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
       const sourceIndex = page.sourcePage === 2 ? index : page.sourcePage === 3 ? index + 4 : -1
       const sourceTemplate = !sourceVariants.length && PVC_SEED[sourceIndex]
       const sourceTemplateVariants = sourceTemplate?.variants ?? []
-      const variants = sourceVariants.length
+      const cornerExtra = sourceIndex === 4
+        ? (sourceTemplate?.extra ?? (typeof p.extra === 'string' ? p.extra : (p.extra?.image || p.extra?.photo || null)))
+        : null
+      let variants = sourceVariants.length
         ? sourceVariants
         : (sourceTemplateVariants.length ? sourceTemplateVariants : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : []))
-      const extra = sourceTemplate?.extra ?? (typeof p.extra === 'string'
+      if (cornerExtra && variants.length === 4 && sourceIndex === 4 && !variants[3].secondaryPhoto) {
+        variants = [...variants.slice(0, 3), { ...variants[3], secondaryPhoto: cornerExtra }]
+      }
+      const extra = sourceIndex === 4 ? null : (sourceTemplate?.extra ?? (typeof p.extra === 'string'
         ? p.extra
-        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null))
+        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null)))
       const rawSize = p.size ?? p.subtitle ?? ''
       return { ...p,
       size: String(rawSize).replace(/^size\s*:\s*/i, ''),

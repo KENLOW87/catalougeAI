@@ -15,7 +15,12 @@ function Variant({ v }) {
   return (
     <div className="pvc-variant">
       {v.photo
-        ? <img className="pvc-vphoto" src={v.photo} alt={v.name} />
+        ? (v.secondaryPhoto
+          ? <div className="pvc-vphotos">
+              <img className="pvc-vphoto" src={v.photo} alt={v.name} />
+              <img className="pvc-vphoto" src={v.secondaryPhoto} alt="" />
+            </div>
+          : <img className="pvc-vphoto" src={v.photo} alt={v.name} />)
         : <span className="pvc-missing" />}
       <div className="pvc-vname">{v.name}</div>
     </div>
