@@ -5,6 +5,8 @@ import { parseCommand, COMMAND_HELP } from '../lib/commands.js'
 import { apiUrl } from '../lib/api.js'
 import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
 import { processBackground, adjustPhoto } from '../lib/bgremove.js'
+import { prepareProductPhoto, finishProductPhoto } from '../lib/product-photo.js'
+import { assessBackgroundRemoval } from '../lib/image-quality.js'
 import { isDisplayRequest, isRemoveDisplayRequest } from '../lib/display-image.js'
 import { isDisplayConversation } from '../lib/display-planner.js'
 import { interpreterPayload, resolveInterpretedIntent, resolveCatalogueIntent } from '../lib/bot-interpreter.js'
@@ -50,8 +52,8 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   const [log, setLog] = useState([])
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  // Attachments start as originals. Only an explicit edit adds a clean preview;
-  // display-image commands always use raw, even when a clean preview exists.
+  // Keep both versions: the cleaned candidate is used for product actions, while
+  // display/page actions deliberately continue to use the original scene.
   const [attachment, setAttachment] = useState(null)
   const [bgBusy, setBgBusy] = useState(false)
   const boxRef = useRef(null)
@@ -130,7 +132,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
           say({ who: 'bot', source: 'local', text: `Starting ${act.value} — I can only open one at a time, ` +
             `since each needs its own photo. Once it is saved, ask me to add ${act.more.join(', ')}.` })
         }
-        actions.onAddProduct?.(act.value, act.photo)
+        actions.onAddProduct?.(act.value, act.photo, act.afterId ? { afterId: act.afterId, afterName: act.afterName } : null, act.catalogueId ?? null)
         setOpen(false)
       },
       // Uploading has ONE place now: the dashboard. Scattering it across the
@@ -171,7 +173,32 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     call?.()
   }
 
+  // The free cutout cannot tell a hand or prop apart from the product, so a
+  // doubtful result is only ever OFFERED (see pickAttachment's propose card) —
+  // the paid product-only edit runs HERE, on the click, never before it.
+  const applyAiCleanAttachment = async (i, action) => {
+    if (bgBusy) return
+    const jobId = log[i]?.activityJobId
+    setBgBusy(true)
+    try {
+      const edited = await prepareProductPhoto(action.value, { jobId })
+      const quality = await assessBackgroundRemoval(action.value, edited.dataUrl)
+      if (!quality.accepted) throw new Error(quality.findings.map(f => f.message).join(' ') || 'Hasil masih tidak baik.')
+      setAttachment(a => (a?.raw === action.value ? { ...a, clean: edited.dataUrl, useClean: true } : a))
+      activityStatus(jobId, 'applied', 'ai-clean-attachment')
+      setLog(prev => prev.map((m, k) => (k === i ? { ...m, done: true,
+        propose: { ...m.propose, detail: `Produk sahaja diasingkan dengan AI — tangan dan latar dibuang, bentuk serta angle asal dikekalkan.${edited.light ? ' Latar gelap ditambah kerana produk cerah.' : ''}` } } : m)))
+    } catch (error) {
+      activityStatus(jobId, 'background-review', error.message)
+      setLog(prev => prev.map((m, k) => (k === i ? { ...m, done: true, propose: null,
+        text: `AI tidak dapat sahkan hasil: ${error.message}. Gambar asal dikekalkan.` } : m)))
+    } finally {
+      setBgBusy(false)
+    }
+  }
+
   const apply = (i, action) => {
+    if (action.type === 'aiCleanAttachment') { applyAiCleanAttachment(i, action); return }
     const jobId = log[i]?.activityJobId
     if (action.type === 'addDisplayImage') action = { ...action, displayId: action.displayId ?? crypto.randomUUID(), addedAt: Date.now() }
     if (['addDisplayImage', 'moveDisplayImage'].includes(action.type)) displayContext.current = action
@@ -190,8 +217,12 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     if (['addImagePage', 'positionImagePage'].includes(action.type)) setOpen(false)
   }
 
-  // Attachment intent is not known until the admin gives an instruction.
-  // Preserve the original; only an explicit cleaning command invokes image AI.
+  // Clean product uploads with the FREE local cutout only, automatically.
+  // The free model cannot tell a hand/prop apart from the product — when its
+  // result is doubtful, the paid product-only edit is only ever OFFERED, with
+  // its cost shown up front; it runs only after an explicit Apply click
+  // (see applyAiCleanAttachment). This is never auto-called — see the
+  // $6 cost incident this app already had from an unattended paid image call.
   const pickAttachment = async e => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -202,7 +233,35 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     catch (error) { activityStatus(uploadJob, 'failed', error.message); throw error }
     setAttachment({ raw, clean: null, useClean: false, name: file.name })
     say({ who: 'you', activityJobId: uploadJob, text: `📎 ${file.name}` })
-    say({ who: 'bot', activityJobId: null, source: 'local', text: 'Gambar asal dikekalkan, tanpa proses AI. Sebut arahan, contohnya "Tambah gambar display untuk WB07", "Gantikan gambar WB07", atau "Buang background gambar ini".' })
+    say({ who: 'bot', activityJobId: uploadJob, source: 'local', text: 'Gambar diterima. Cutout percuma sedang dijalankan; gambar asal tetap disimpan untuk arahan display/page.' })
+    setBgBusy(true)
+    activityStatus(uploadJob, 'processing-background')
+    try {
+      const local = await processBackground(raw, { force: true })
+      const finished = await finishProductPhoto(local.dataUrl)
+      const quality = await assessBackgroundRemoval(raw, finished.dataUrl)
+      if (quality.accepted && !quality.needsReview) {
+        setAttachment(a => a?.raw === raw ? { ...a, clean: finished.dataUrl, useClean: true } : a)
+        activityStatus(uploadJob, 'background-ready', 'local-product-only')
+        say({ who: 'bot', activityJobId: uploadJob, source: 'local', text: `Produk sahaja telah diasingkan tanpa credit AI. Angle, pose dan bentuk asal dikekalkan.${finished.light ? ' Produk putih diberi background gelap.' : ''}` })
+      } else {
+        // Keep the original active — the local candidate is only a preview the
+        // admin can toggle to. Nothing paid happens until Apply is clicked.
+        setAttachment(a => a?.raw === raw ? { ...a, clean: finished.dataUrl, useClean: false } : a)
+        activityStatus(uploadJob, 'background-needs-ai', quality.findings.map(f => f.message).join(' '))
+        say({ who: 'bot', activityJobId: uploadJob, source: 'local', text: '', propose: {
+          summary: 'Cutout percuma tidak confident — guna AI untuk asingkan produk sahaja?',
+          preview: finished.dataUrl,
+          detail: `${quality.findings.map(f => f.message).join(' ') || 'Kemungkinan tangan atau objek lain masih dalam gambar.'} AI akan buang tangan/prop/latar dan kekalkan bentuk, angle serta warna asal produk. Anggaran kos: ~USD 0.05–0.10 (~RM 0.25–0.45) setiap gambar, dicaj pada akaun OpenAI projek ini — tiada caj jika "No, leave it" dipilih. Gambar asal kekal digunakan sehingga Apply ditekan.`,
+          action: { type: 'aiCleanAttachment', value: raw },
+        } })
+      }
+    } catch (error) {
+      activityStatus(uploadJob, 'background-failed', error.message)
+      say({ who: 'bot', activityJobId: uploadJob, source: 'local', text: `Cutout percuma gagal disahkan: ${error.message}. Original dikekalkan supaya gambar rosak tidak masuk ke katalog.` })
+    } finally {
+      setBgBusy(false)
+    }
   }
 
   const runCheck = (quiet = false) => {
@@ -234,7 +293,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
       try {
         const result = propose.action.type === 'adjustPhoto'
           ? { dataUrl: await adjustPhoto(propose.action.value, propose.action.operation, propose.action.angle) }
-          : await processBackground(propose.action.value, { force: true, jobId: activityJob.current })
+          : await prepareProductPhoto(propose.action.value, { jobId: activityJob.current })
         const cleaned = result.dataUrl
         say({ who: 'bot', source, text: '', propose: {
           ...propose,
@@ -258,7 +317,8 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
 
   const ask = async question => {
     const text = question.trim()
-    // Upload alone never starts image processing.
+    // Upload starts the product-only candidate; this message supplies the
+    // catalogue or display instruction that follows it.
     if (!text || busy) return
     activityJob.current = beginActivity('bot.command', text, { category: category.id })
     setQ(''); setShowHelp(false)
@@ -444,9 +504,11 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
                     ) : (
                       <div className="proposal-acts">
                         <button className={m.propose.danger ? 'danger' : 'primary'}
-                                disabled={busy}
+                                disabled={busy || (m.propose.action?.type === 'aiCleanAttachment' && bgBusy)}
                                 onClick={() => apply(i, m.propose.action)}>
-                          {m.propose.danger ? 'Yes, delete it' : 'Apply'}
+                          {m.propose.danger ? 'Yes, delete it'
+                            : m.propose.action?.type === 'aiCleanAttachment' ? (bgBusy ? 'Memproses AI…' : 'Guna AI (~$0.05–0.10)')
+                            : 'Apply'}
                         </button>
                         <button onClick={() => { activityStatus(m.activityJobId, 'not-applied'); setLog(prev => prev.map((x, k) => (k === i ? { ...x, done: true, text: 'Left as it was.' , propose: null } : x))) }}>
                           No, leave it
