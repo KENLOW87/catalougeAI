@@ -5,14 +5,16 @@ services:
     dockerfilePath: ./app/Dockerfile
     dockerContext: ./app
     healthCheckPath: /api/ai/status
-    # Without this, app/data/ (activity logs, published-catalogue snapshots) lives
-    # on the container's writable layer and is wiped on every redeploy — publishing
-    # would silently appear to work and then vanish. WORKDIR in app/Dockerfile is
-    # /app, and `COPY . .` puts the repo's app/data at /app/data inside the image.
-    disk:
-      name: data
-      mountPath: /app/data
-      sizeGB: 1
+    plan: free
+    # The free plan cannot attach a persistent disk, so there is no `disk:`
+    # here — app/data/ (activity logs, published-catalogue snapshots) lives on
+    # the container's writable layer and is wiped every time the service
+    # redeploys OR spins down from 15 minutes of no traffic (free-plan
+    # behaviour). A published catalogue only stays visible while the service
+    # stays warm; re-publish after any sleep/redeploy, or keep it warm with an
+    # external pinger (e.g. cron-job.org hitting /api/ai/status every 10 min).
+    # Upgrading to a paid plan and adding a `disk:` block here removes this
+    # limitation entirely.
     envVars:
       - key: PORT
         value: 10000
