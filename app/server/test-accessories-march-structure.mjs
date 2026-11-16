@@ -6,6 +6,13 @@ import { repairLegacyAccessoriesProducts } from '../src/lib/repair-known-source.
 const specs = BUILTIN_SPECS.filter(spec => /^accessories-march-/.test(spec.id))
 assert.equal(specs.length, 11)
 
+const page8 = specs.find(spec => spec.id === 'accessories-march-8')
+assert.equal(page8.expectedAnchorCount, 4, 'page 8 must contain four Flat Bar source rows')
+const page8PhotoBoxes = page8.kinds[0].fields.find(field => field.key === 'photo').boxByAnchor
+assert.deepEqual(page8PhotoBoxes.map(box => [box.x, box.y, box.w]), [
+  [87, 0, 123], [87, 0, 123], [87, 0, 123], [87, 0, 123],
+], 'page 8 photos stay in the right-hand source column')
+
 let profileProducts = 0
 for (const spec of specs) {
   assert.equal(spec.productShape, 'generic')
@@ -16,8 +23,8 @@ for (const spec of specs) {
   profileProducts += logical.size
   assert.ok(!names.includes('Aluminum End Bend Features'))
 }
-assert.equal(profileProducts, 29)
-assert.equal(profileProducts + 7, 36, 'seven LED products plus 29 profile products')
+assert.equal(profileProducts, 30)
+assert.equal(profileProducts + 7, 37, 'seven LED products plus 30 profile products')
 
 const generic = adoptRuleProduct({
   name: 'Profile', subtitle: 'Size : 9\'5"', third: 'Carbon Crystal',
@@ -40,20 +47,30 @@ const saved = [
   { id: 'features', categoryId: 'accessories', sourcePage: 6, name: 'Aluminum End Bend Features', photo: 'feature-photo', drawing: 'feature-text' },
 ]
 const repaired = repairLegacyAccessoriesProducts('accessories', saved)
-assert.equal(repaired.length, 4)
-assert.deepEqual(repaired.map(product => product.name), ['I Profile', 'END Profile', 'CORNER Profile', 'Aluminum End Bend'])
-for (const product of repaired) {
+assert.equal(repaired.length, 5)
+assert.deepEqual(repaired.map(product => product.name), ['I Profile', 'END Profile', 'CORNER Profile', 'Aluminum End Bend', 'Aluminum End Bend'])
+for (const product of repaired.slice(0, 3)) {
   assert.equal(product.productShape, 'generic')
   assert.equal(product.variantTechnical, true)
   assert.deepEqual(product.finishes.map(variant => variant.name), ['5mm', '8mm'])
   assert.ok(product.finishes.every(variant => variant.photo && variant.drawing))
 }
-const bend = repaired.at(-1)
-assert.equal(bend.supportStrip, 'feature-photo')
-assert.ok(bend.sourceReferences.some(reference => reference.image === 'feature-text'))
+assert.match(repaired[0].finishes[0].photo, /page4-i-profile-5mm-photo/)
+assert.match(repaired[0].finishes[0].drawing, /page4-i-profile-5mm-drawing/)
+assert.match(repaired[0].finishes[1].photo, /page4-i-profile-8mm-photo/)
+assert.match(repaired[1].finishes[0].drawing, /page4-end-profile-5mm-drawing/)
+assert.match(repaired[2].finishes[0].drawing, /corner-5mm-drawing/)
+assert.match(repaired[2].finishes[1].drawing, /corner-8mm-drawing/)
+const bends = repaired.slice(-2)
+assert.deepEqual(bends.map(product => product.third), [
+  'Thickness : 5mm / Carbon Crystal',
+  'Thickness : 8mm / Carbon Crystal',
+])
+assert.equal(bends[1].supportStrip, 'feature-photo')
+assert.ok(bends[1].sourceReferences.some(reference => reference.image === 'feature-text'))
 
 const repairedAgain = repairLegacyAccessoriesProducts('accessories', repaired)
 assert.deepEqual(repairedAgain[0].finishes.map(variant => variant.name), ['5mm', '8mm'])
 assert.equal(repairedAgain[0].third, 'Thickness : 5mm / 8mm / Carbon Crystal')
 
-console.log('Accessories March structure: 36 products, grouped technical variations, saved-catalogue repair OK')
+console.log('Accessories March structure: 37 products, page 6 kept as two products, saved-catalogue repair OK')

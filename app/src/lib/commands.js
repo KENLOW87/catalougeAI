@@ -231,6 +231,14 @@ export function parseCommand(text, items = [], category = null, findings = [], c
     } } }
   }
 
+  // Recognised here, ahead of the catalogue-naming check below, so "add
+  // product in PVC Marble Sheet" can be acted on as ONE instruction — see
+  // its use there, and the original add-product handling further down.
+  const codes = allCodesLike(text)
+  const creationRequest = /^(?:(?:please|tolong|can you|could you|boleh(?:kah)?(?: awak)?|saya (?:nak|mahu)|aku nak|nak|i want(?: you)? to)\s+)*(?:add|create|new)\b/.test(t)
+  const addsByCode = creationRequest && /\b(add|create)\b/.test(t) && (/\b(product|item)\b/.test(t) || nameLike(text))
+  const addsByWord = creationRequest && /\bnew\b/.test(t) && /\b(product|item)\b/.test(t)
+
   // --- naming another catalogue ---------------------------------------------
   // "fix accecories cataluge" names a catalogue, possibly misspelt, possibly not
   // the one on screen. Acting on the wrong catalogue would be worse than asking.
@@ -238,6 +246,12 @@ export function parseCommand(text, items = [], category = null, findings = [], c
   if (named && named.id !== category?.id) {
     if (/\b(open|switch|go to|show me)\b/.test(t)) {
       return { run: { type: 'open', id: named.id, label: named.title } }
+    }
+    // "Add product in PVC Marble Sheet" already says everything needed —
+    // which catalogue, and what to do there — so switch and open the dialog
+    // in one step rather than making the admin repeat it as "open X" first.
+    if (addsByCode || addsByWord) {
+      return { run: { type: 'addProduct', value: codes[0] ?? null, more: codes.slice(1), photo: attachment, catalogueId: named.id } }
     }
     return { reply: `That is ${named.title}, and you have ${category?.title ?? 'another catalogue'} open. ` +
       `Say "open ${named.title}" and I will switch, then I can work on it.` }
@@ -355,11 +369,9 @@ export function parseCommand(text, items = [], category = null, findings = [], c
   // Mentioning a previous action ("yang aku masukkan tadi...") is not an
   // imperative to create another product. Uncertain wording goes to the AI
   // with conversation context instead of opening an unrelated product dialog.
-  const creationRequest = /^(?:(?:please|tolong|can you|could you|boleh(?:kah)?(?: awak)?|saya (?:nak|mahu)|aku nak|nak|i want(?: you)? to)\s+)*(?:add|create|new)\b/.test(t)
-  const addsByCode = creationRequest && /\b(add|create)\b/.test(t) && (/\b(product|item)\b/.test(t) || nameLike(text))
-  const addsByWord = creationRequest && /\bnew\b/.test(t) && /\b(product|item)\b/.test(t)
+  // (addsByCode/addsByWord/codes are computed above, ahead of the
+  // catalogue-naming check, so a named catalogue can be folded in too.)
   if (addsByCode || addsByWord) {
-    const codes = allCodesLike(text)
     return { run: { type: 'addProduct', value: codes[0] ?? null, more: codes.slice(1), photo: attachment } }
   }
   if (/\b(import|upload|read)\b.*\b(pdf|catalogue|catalog)\b/.test(t)) return { run: { type: 'import' } }

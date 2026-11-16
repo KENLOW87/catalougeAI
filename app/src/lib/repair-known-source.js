@@ -1,11 +1,16 @@
 import { SEED } from './model.js'
+import { PVC_SEED } from './categories/pvc.js'
 
 // A previous Accessories import was saved without the fourth standard LED card.
 // Repair only that unmistakable legacy signature: never resurrect a product from
 // an arbitrary catalogue or overwrite an existing edited record.
 export function repairLegacyAccessoriesProducts(categoryId, products) {
   if (categoryId !== 'accessories' || !Array.isArray(products)) return products
+  products = repairPvcMeasurementDrawings(products)
+  products = splitMarch2026EndBendProducts(products)
   products = repairMarch2026Variations(products)
+  products = repairMarch2026FlatBarDrawings(products)
+  products = repairMarch2026Page9Profiles(products)
   const names = new Set(products.map(p => String(p?.name ?? '').trim().toLowerCase()))
   if (names.has('led - 508') || names.has('led-508')) return products
   const signature = ['led -160', 'led -170', 'led -195', 'led -15', 'corner led 601', 'led - 08']
@@ -26,14 +31,159 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
   return [...products.slice(0, before), restored, ...products.slice(before)]
 }
 
+// The source PDF prints two separate Aluminum End Bend product cards on page 6:
+// one 5mm card and one 8mm card. Older imports merged them as technical variants.
+// Split that legacy shape back into two products while retaining the first ID and
+// giving the second a stable thickness-specific ID.
+function splitMarch2026EndBendProducts(products) {
+  let changed = false
+  const out = []
+  for (const product of products) {
+    if (product?.sourcePage !== 6 || normal(product.name) !== 'aluminum end bend') {
+      out.push(product)
+      continue
+    }
+    if (!product.variantTechnical || !Array.isArray(product.finishes) || product.finishes.length < 2) {
+      const thickness = /thickness-8mm/i.test(String(product.id)) ||
+        /^thickness\s*:\s*8mm\b/i.test(String(product.third ?? '')) ? '8mm' : '5mm'
+      const drawing = `/assets/source/accessories-march-2026/aluminum-end-bend-${thickness}-drawing.png?v=2026-11-02-page6-drawings`
+      const photo = `/assets/source/accessories-march-2026/aluminum-end-bend-${thickness}-photo.png?v=2026-11-03-page6-source-rows`
+      const fixed = product.drawing === drawing && product.photo === photo ? product : {
+        ...product,
+        photo,
+        photoOriginal: product.photoOriginal ?? product.photo,
+        sourcePhotoBackup: product.sourcePhotoBackup ?? product.photo,
+        drawing,
+        drawingOriginal: product.drawingOriginal ?? product.drawing,
+        sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+      }
+      if (fixed !== product) changed = true
+      out.push(fixed)
+      continue
+    }
+    const { finishes, variants, photo: oldPhoto, drawing: oldDrawing, ...base } = product
+    finishes.slice(0, 2).forEach((finish, index) => {
+      const thickness = /5mm|8mm/i.exec(String(finish.name ?? ''))?.[0] ?? (index === 0 ? '5mm' : '8mm')
+      out.push({
+        ...base,
+        id: index === 0 ? product.id : `${product.id}-thickness-${thickness}`,
+        photo: `/assets/source/accessories-march-2026/aluminum-end-bend-${thickness}-photo.png?v=2026-11-03-page6-source-rows`,
+        photoOriginal: finish.photoOriginal ?? null,
+        drawing: `/assets/source/accessories-march-2026/aluminum-end-bend-${thickness}-drawing.png?v=2026-11-02-page6-drawings`,
+        drawingOriginal: finish.drawingOriginal ?? null,
+        sourceBox: finish.sourceBox ?? product.sourceBox ?? null,
+        sourceDrawingBox: finish.sourceDrawingBox ?? product.sourceDrawingBox ?? null,
+        subtitle: `Size : 9'5"`,
+        third: `Thickness : ${thickness} / Carbon Crystal`,
+        variantTechnical: false,
+        finishes: undefined,
+        variants: undefined,
+        examples: [],
+        supportStrip: index === 1 ? '/assets/source/accessories-march-2026/aluminum-end-bend-features.png?v=2026-11-02-page6-clean' : null,
+        supportCaption: index === 1 ? 'Aluminum End Bend — original feature and bending guide' : null,
+        sourceReferences: [],
+      })
+    })
+    changed = true
+  }
+  return changed ? out : products
+}
+
+// Page 8's Flat Bar dimension crops were previously taken from a box that was
+// tall enough to include the next row's caption.  The 80mm card therefore
+// showed the size text as a clipped second line.  Replace only that known
+// source drawing on load; keep the old asset as a recovery backup and never
+// touch the product photo or any user-edited drawing from another source page.
+function repairMarch2026FlatBarDrawings(products) {
+  let changed = false
+  const repaired = products.map(product => {
+    if (product?.sourcePage !== 8 || normal(product.name) !== 'flat bar') return product
+    const width = String(product.subtitle ?? '').match(/(20|25|30|80)\s*mm/i)?.[1]
+    if (!width) return product
+    const drawing = `/assets/source/accessories-march-2026/flat-bar-${width}mm-drawing.png?v=2026-11-03-page8-measurements`
+    const photo = `/assets/source/accessories-march-2026/flat-bar-${width}mm-photo.png?v=2026-11-03-page8-source-rows`
+    if (product.drawing === drawing && product.photo === photo) return product
+    changed = true
+    return {
+      ...product,
+      photo,
+      photoOriginal: product.photoOriginal ?? product.photo,
+      sourcePhotoBackup: product.sourcePhotoBackup ?? product.photo,
+      drawing,
+      drawingOriginal: product.drawingOriginal ?? product.drawing,
+      sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+    }
+  })
+  return changed ? repaired : products
+}
+
+// Page 9's previous saved records used a whole-row crop, so the cards showed
+// neighbouring captions, drawings and the small reference pieces as if they
+// were the product photo. Restore the three right-hand finish groups and the
+// matching dimension sketches from the reviewed source rectangles.
+function repairMarch2026Page9Profiles(products) {
+  let changed = false
+  const repaired = products.map(product => {
+    if (product?.sourcePage !== 9) return product
+    const name = normal(product.name)
+    const size = String(product.subtitle ?? '')
+    let key = null
+    if (name === 't profile' && /10\s*mm\s*x\s*3000/i.test(size)) key = 't-profile-10mm'
+    if (name === 'u channel profile' && /10\s*mm\s*x\s*3000/i.test(size)) key = 'u-channel-10mm'
+    if (name === 'u channel profile' && /20\s*mm\s*x\s*3000/i.test(size)) key = 'u-channel-20mm'
+    if (!key) return product
+    const photo = `/assets/source/accessories-march-2026/page9-${key}-photo.png?v=2026-11-03-page9-source-rows`
+    const drawing = `/assets/source/accessories-march-2026/page9-${key}-drawing.png?v=2026-11-03-page9-measurements`
+    if (product.photo === photo && product.drawing === drawing) return product
+    changed = true
+    return {
+      ...product,
+      photo,
+      photoOriginal: product.photoOriginal ?? product.photo,
+      sourcePhotoBackup: product.sourcePhotoBackup ?? product.photo,
+      drawing,
+      drawingOriginal: product.drawingOriginal ?? product.drawing,
+      sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+    }
+  })
+  return changed ? repaired : products
+}
+
+// Existing Accessories imports may carry the old full-card dimension crops in
+// IndexedDB. Replace only the unambiguous PVC source rows with the reviewed,
+// dimension-only transparent drawings; retain the old pixels as a recovery copy.
+function repairPvcMeasurementDrawings(products) {
+  const nextIndex = { 2: 0, 3: 0 }
+  let changed = false
+  const repaired = products.map(product => {
+    const page = Number(product?.sourcePage)
+    if (![2, 3].includes(page)) return product
+    const index = nextIndex[page]++
+    const sourceIndex = page === 2 ? index : index + 4
+    const source = PVC_SEED[sourceIndex]
+    if (!source || normal(product.name) !== normal(source.name) || !source.drawing) return product
+    const drawingChanged = product.drawing !== source.drawing
+    const exceptionChanged = JSON.stringify(product.exceptions ?? null) !== JSON.stringify(source.exceptions ?? null)
+    if (!drawingChanged && !exceptionChanged) return product
+    changed = true
+    return {
+      ...product,
+      drawing: drawingChanged ? source.drawing : product.drawing,
+      drawingOriginal: drawingChanged && product.drawing ? (product.drawingOriginal ?? product.drawing) : product.drawingOriginal,
+      sourceDrawingBackup: drawingChanged && product.drawing ? (product.sourceDrawingBackup ?? product.drawing) : product.sourceDrawingBackup,
+      exceptions: source.exceptions,
+    }
+  })
+  return changed ? repaired : products
+}
+
 const normal = value => String(value ?? '').trim().toLowerCase()
 const thickness = product => /(?:thickness\s*:\s*)?(5mm|8mm)/i.exec(String(product?.third ?? ''))?.[1] ?? ''
 const knownVariation = product => {
   if (![4, 5, 6].includes(product?.sourcePage)) return false
   const name = normal(product.name)
   return (product.sourcePage === 4 && (name === 'i profile' || name === 'end profile')) ||
-    (product.sourcePage === 5 && name === 'corner profile') ||
-    (product.sourcePage === 6 && name === 'aluminum end bend')
+    (product.sourcePage === 5 && name === 'corner profile')
 }
 
 // Repair the already-saved March 2026 catalogue without asking for another
@@ -82,6 +232,7 @@ function repairMarch2026Variations(products) {
       let examples = current.examples ?? []
       let supportStrip = current.supportStrip
       let sourceReferences = current.sourceReferences ?? []
+      let sourceReferencesBackup = current.sourceReferencesBackup
       if (current.sourcePage === 5 && normal(current.name) === 'corner profile' && !supportStrip) {
         supportStrip = '/assets/source/accessories-march-2026/corner-support.png'
         changed = true
@@ -95,9 +246,15 @@ function repairMarch2026Variations(products) {
         }
         const cleaned = examples.filter(example => !['Feature explanation', 'Before bend / after bend'].includes(example.caption))
         if (cleaned.length !== examples.length) changed = true
-        examples = cleaned
+        // The three finish photos belong to the two technical variations above,
+        // not to the feature/support band. Keep only the original bend reference
+        // in the support area so page 6 does not repeat and scatter product media.
+        examples = []
+        supportStrip = '/assets/source/accessories-march-2026/aluminum-end-bend-features.png?v=2026-11-02-page6-clean'
+        sourceReferencesBackup = sourceReferences.length ? (current.sourceReferencesBackup ?? sourceReferences) : current.sourceReferencesBackup
+        sourceReferences = []
         if (featureText || beforeAfter) {
-          supportStrip = '/assets/source/accessories-march-2026/aluminum-end-bend-features.png'
+          supportStrip = '/assets/source/accessories-march-2026/aluminum-end-bend-features.png?v=2026-11-02-page6-clean'
           sourceReferences = sourceReferences.filter(reference => reference.caption !== 'Original feature explanation')
         }
       }
@@ -113,9 +270,12 @@ function repairMarch2026Variations(products) {
           ? 'Aluminum End Bend — original feature and bending guide'
           : current.sourcePage === 5 ? 'CORNER Profile — additional original profile reference' : current.supportCaption,
         sourceReferences,
+        sourceReferencesBackup,
       }
       if (current.third !== fixed.third || current.subtitle !== fixed.subtitle ||
-          finishes.some((finish, index) => finish.name !== current.finishes?.[index]?.name)) changed = true
+          finishes.some((finish, index) => finish.name !== current.finishes?.[index]?.name) ||
+          current.supportStrip !== supportStrip || current.examples !== examples ||
+          current.sourceReferences !== sourceReferences) changed = true
       out.push(fixed)
       continue
     }
@@ -134,6 +294,10 @@ function repairMarch2026Variations(products) {
       third: `Thickness : ${members.map(thickness).filter(Boolean).join(' / ')} / Carbon Crystal`,
       photo: null,
       drawing: null,
+      examples: current.sourcePage === 6 ? [] : current.examples,
+      supportStrip: current.sourcePage === 6
+        ? '/assets/source/accessories-march-2026/aluminum-end-bend-features.png?v=2026-11-02-page6-clean'
+        : current.supportStrip,
       finishes: members.map((member, index) => ({
         id: `${current.id}-thickness-${thickness(member) || index + 1}`,
         name: thickness(member) || ['5mm', '8mm'][index] || `Variation ${index + 1}`,
@@ -169,7 +333,10 @@ const MARCH_PROFILE_META = {
     ['END Profile', `Size : 9'5"`, 'Thickness : 5mm / 8mm / Carbon Crystal'],
   ],
   5: [['CORNER Profile', `Size : 9'5"`, 'Thickness : 5mm / 8mm / Carbon Crystal']],
-  6: [['Aluminum End Bend', `Size : 9'5"`, 'Thickness : 5mm / 8mm / Carbon Crystal']],
+  6: [
+    ['Aluminum End Bend', `Size : 9'5"`, 'Thickness : 5mm / Carbon Crystal'],
+    ['Aluminum End Bend', `Size : 9'5"`, 'Thickness : 8mm / Carbon Crystal'],
+  ],
   7: [
     ['T Micro-Seam Aluminium Black', `Size : 9'5"`, 'Thickness : 8mm / Carbon Crystal'],
     ['H Micro-Seam Aluminium Silver', `Size : 9'5"`, 'Thickness : 8mm / Carbon Crystal'],

@@ -91,6 +91,7 @@ export default function App() {
   })
 
   const [editing, setEditing] = useState(null)
+  const [pendingProductPlacement, setPendingProductPlacement] = useState(null)
   const [highlight, setHighlight] = useState([])
   const [zoom, setZoom] = useState(0.62)
   const [busy, setBusy] = useState('')
@@ -281,7 +282,7 @@ export default function App() {
 
   const save = p => {
     setProducts(prev => {
-      if(category.isDefault)return upsertSeriesProduct(prev,p)
+      if(category.isDefault)return upsertSeriesProduct(prev,p,pendingProductPlacement)
       if (prev.some(x => x.id === p.id)) return prev.map(x => (x.id === p.id ? p : x))
       // A brand-new product joins its own code group ("WB09" right after the
       // last WB*") instead of always landing at the very end. Array order IS
@@ -295,6 +296,7 @@ export default function App() {
       next.splice(prev.length - lastSamePrefix, 0, p)
       return next
     })
+    setPendingProductPlacement(null)
     setEditing(null)
   }
 
@@ -693,7 +695,8 @@ export default function App() {
           // The file the assistant was handed goes straight through to review.
           // A code named in chat ("add PV23") is typed into the name field
           // already — the admin still supplies the photo, same as any add.
-          onAddProduct: (name, photo) => {
+          onAddProduct: (name, photo, placement = null, requestedCategoryId = null) => {
+            setPendingProductPlacement(placement)
             const startIn = (id, cat) => {
               const product = { ...cat.kinds[0].make(), ...(name ? { name } : {}) }
               const field = cat.fields(product).find(f => f.type === 'image' && f.key !== 'drawing')
@@ -720,7 +723,10 @@ export default function App() {
                 }
               }
             }
-            startIn(categoryId, category)
+            const requestedCategory = requestedCategoryId && requestedCategoryId !== categoryId
+              ? resolveCategory(requestedCategoryId, chromeByCategory[requestedCategoryId], customCategories)
+              : category
+            startIn(requestedCategoryId || categoryId, requestedCategory)
           },
           onApply: act => {
             if (['removeImagePage', 'clearProductPhoto'].includes(act.type)) {

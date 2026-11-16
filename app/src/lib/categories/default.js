@@ -88,6 +88,28 @@ export function defaultCategoryFor(parent, chrome = null) {
           continue                                      // …then the page, on its own
         }
         const product = { ...item, slot: ++slot }
+        // PVC Foam Board's source sheet is three large stacked product rows,
+        // not a four-column card grid. Keep the source order and give the whole
+        // page to those rows so their photos remain readable at the same scale
+        // as the supplier PDF.
+        if (product.categoryId === 'pvc-foam-board' && Number.isInteger(product.sourcePage)) {
+          const sourcePage = product.sourcePage
+          const sourceProducts = [product]
+          while (itemIndex + 1 < items.length) {
+            const next = items[itemIndex + 1]
+            if (!next || next.isPage || next.categoryId !== 'pvc-foam-board' || next.sourcePage !== sourcePage) break
+            sourceProducts.push({ ...next, slot: ++slot })
+            itemIndex++
+          }
+          flushPage()
+          const sourceRows = sourceProducts.map(p => [p])
+          const sourceGap = 3
+          const available = PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)
+          const sourceRowHeights = sourceRows.length === 3 ? [78, 78, Math.max(78, Math.floor(available - 156))] : null
+          const sourceRowH = sourceRowHeights?.[0] ?? Math.floor(available / sourceRows.length)
+          pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, rowHeights: sourceRowHeights, rowGap: sourceGap, columns: 1, sourcePage })
+          continue
+        }
         // Recognised Accessories pages are already paginated by the source PDF.
         // Keep each source page together and size its rows to the number of
         // printed products instead of letting the generic drawing rule turn it
@@ -119,7 +141,20 @@ export function defaultCategoryFor(parent, chrome = null) {
           // the LED-08 variation row. Equal halves leave a large artificial
           // void between the photos, drawings and captions, so keep both rows
           // compact while preserving the source page and its ordering.
-          const sourceRowHeights = sourcePage === 1 ? [94, 102] : null
+          // Foam Panel page 6 has one merged 5mm/8mm product followed by its
+          // original feature/support strip. Give the two technical variations
+          // the larger band they need; equal halves made the photos and drawings
+          // collapse into a cluttered row.
+          // Page 7's T Micro-Seam carries a usage example (photo + drawing +
+          // example = 3 images) while H Micro-Seam only has photo + drawing.
+          // An equal split sized both rows for the lighter H Micro-Seam content,
+          // so T Micro-Seam's extra example overflowed its row and visually
+          // bled into H Micro-Seam's card below it.
+          const sourceRowHeights = sourcePage === 1 ? [94, 102]
+            : sourcePage === 6 && sourceRows.length === 3 ? [82, 82, 87]
+            : sourcePage === 6 ? [150, 93]
+            : sourcePage === 7 ? [180, 76]
+            : null
           const sourceRowH = sourceRowHeights?.[0] ?? Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
           pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, rowHeights: sourceRowHeights, rowGap: sourceGap, columns: sourcePage === 1 ? 6 : undefined, sourcePage })
           continue

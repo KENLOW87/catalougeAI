@@ -35,6 +35,22 @@ console.log('\n== duplicate names pair up in order ==')
   check(r.matched.every(m => m.ambiguous), 'and flagged as matched by position, not name alone')
 }
 
+console.log('\n== duplicate names use source page and technical line ==')
+{
+  const existing = [
+    P('e5', 'Aluminum End Bend', { sourcePage: 6, third: 'Thickness : 5mm / Carbon Crystal' }),
+    P('e8', 'Aluminum End Bend', { sourcePage: 6, third: 'Thickness : 8mm / Carbon Crystal' }),
+  ]
+  const drafts = [
+    P('d8', 'Aluminum End Bend', { sourcePage: 6, third: 'Thickness : 8mm / Carbon Crystal' }),
+    P('d5', 'Aluminum End Bend', { sourcePage: 6, third: 'Thickness : 5mm / Carbon Crystal' }),
+  ]
+  const r = reconcile(existing, drafts)
+  check(r.matched[0].existing.id === 'e8' && r.matched[1].existing.id === 'e5',
+    'page 6 products match by source page and thickness, even when draft order changes')
+  check(r.matched.every(m => !m.ambiguous), 'exact source identity is not labelled matched by position')
+}
+
 console.log('\n== a product the PDF does not mention ==')
 {
   const existing = [P('e1', 'PV1'), P('e2', 'PV5')]

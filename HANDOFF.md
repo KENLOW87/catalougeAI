@@ -1,16 +1,101 @@
 # GEOMETRA Catalogue AI — Handoff State
 
-Last saved: 28 October 2026 (Asia/Kuala_Lumpur)
+Last saved: 11 November 2026 (Asia/Kuala_Lumpur)
 
 ## Latest handoff — read before the historical notes below
 
-The user is continuing in Claude and has asked to save everything. No new feature
-or redesign is pending. Preserve the working state; wait for the user's next task.
-Read **AGENTS.md in full** before making changes. Its current requirements override
-older design suggestions in this file, README.md or FLOWS.md. The working tree
-contains extensive existing, uncommitted work; do not reset, clean or discard it.
-All implementation and documentation changes are saved on disk; this is not a
-claim that they have been committed to Git.
+The user is continuing in Claude and asked to save everything and continue
+tomorrow. No new feature or redesign is pending. Preserve the working state;
+wait for the user's next task. Read **AGENTS.md in full** before making changes.
+Its current requirements override older design suggestions in this file,
+README.md or FLOWS.md. The working tree contains extensive existing,
+uncommitted work; do not reset, clean or discard it. All implementation and
+documentation changes are saved on disk; this is not a claim that they have
+been committed to Git.
+
+### In progress: Accessories March 2026 drawing/photo extraction bugs (page 2-12)
+
+The user reported the Accessories (Jan 2026).pdf import was garbled from page 7
+onward — wrong images, drawings not cropped as instructed, messy layout. Three
+distinct, confirmed bugs were found and fixed in `app/server/readers/specs.mjs`,
+`app/src/lib/categories/default.js` and `app/server/ingest.mjs`:
+
+1. **Drawing crops had caption text baked in.** The hand-measured `drawing` box
+   y/h for nearly every row on pages 2-12 started inside the printed
+   "Size/Thickness/Carbon Crystal" caption instead of below it. Re-measured
+   against the real source page pixel-by-pixel (not guessed) for every row;
+   verified clean via repeated `/api/ingest` round-trips with visual inspection
+   of every extracted drawing image, not just a sample.
+2. **Page 7 row heights.** `default.js`'s accessories-page pagination split page
+   7's height evenly between T Micro-Seam and H Micro-Seam rows, but T Micro-Seam
+   carries an extra usage-example image H Micro-Seam doesn't have — added a
+   `sourcePage === 7` custom split (`[180, 76]`), matching the existing
+   page-1/page-6 pattern.
+3. **Root cause of the garbled page 7 (the actual bug, not a symptom):**
+   `isKnownLocalCatalogueFilename()` in `ingest.mjs` only trusts the safe
+   rendered-page-crop path (`preserveRendered=true`) for filenames containing
+   "march"/"mac". The user's real file is named "Accessories (Jan 2026).pdf" —
+   doesn't match — so it fell through to the embedded-PDF-image-matching path
+   (`matchNativePdfImage`/`matchesRenderedPhoto`), whose coarse 16×16-sample
+   comparison got fooled by visually-similar photos (diagonal metal-bar product
+   shots look alike across pages) and attached a *different product's, even a
+   different page's*, embedded image to T/H Micro-Seam's photo field. Fixed by
+   gating `preserveRendered` on the matched spec id
+   (`raw._spec?.startsWith('accessories-march-')`) instead of the filename —
+   this is layout-detection-based, not filename-based, so it will not recur for
+   any future "Accessories (...).pdf" regardless of what the file is named.
+   Also trimmed H Micro-Seam's `photo` box height (was 80, now 48) — it was
+   slightly too tall and caught the first line of the shared description
+   paragraph below it.
+
+**Verification done:** all three fixes confirmed via direct `/api/ingest`
+round-trips against the restarted server — extracted every page-2-12 drawing
+and photo image to disk and visually inspected them (not just checked
+dimensions/counts). Pages 2-6, 8-12 confirmed clean. Page 7 (T/H Micro-Seam)
+confirmed clean in the raw extraction after all three fixes landed together.
+
+**NOT yet confirmed:** whether the user's actual saved Accessories catalogue
+(IndexedDB, 37-38 products depending on when last checked) reflects these
+fixes. The user did re-upload multiple times (5+) during this session, but each
+earlier attempt happened before the relevant bug for that attempt was actually
+found — so every one of those legitimately still showed a (different) problem,
+which is why repeated uploads alone never resolved it. The dev server (API,
+port 5174) was being killed and restarted many times near the end of the
+session by something outside this session's control (possibly the user
+restarting their own `npm start`), so it's unconfirmed whether the user's most
+recent upload hit the fully-fixed server. **Next step: have the user do ONE
+more clean upload against a freshly-started server and check page 7.**
+
+A pre-existing, unrelated, already-failing test was noticed but not fixed
+(out of scope for what was asked): `node server/test-accessories-march-structure.mjs`
+fails because `repairLegacyAccessoriesProducts` (`app/src/lib/repair-known-source.js`)
+doesn't rewrite a legacy saved product's photo/drawing path to the new
+march-2026 asset filenames — this only matters for *already-saved* catalogues
+loaded without re-upload, separate from the extraction bugs above.
+
+### Still open: PDF import is slow (~98s for a 30MB/12-page/37-product PDF)
+
+Measured via a real `/api/ingest` timing run (not estimated): ~45s page
+rendering (400+150 DPI, already parallelized), ~20s on one LED page-1
+example-image-matching step, ~31s OCR across pages 2-12 (~1s/product). The OCR
+portion is the best candidate: `app/server/ocr.mjs` uses a single shared
+Tesseract worker, so every field for every product waits its turn even though
+they're reading unrelated crops. Proposed fix (not implemented, needs user
+go-ahead and careful testing since Tesseract workers hold state like the
+character whitelist that must not leak across concurrent calls): a small pool
+of workers (e.g. 3) plus restructuring the sequential `for...await` OCR loops
+in `readers/spec.mjs`/`led.mjs`/`pvc.mjs` to dispatch independent fields via
+`Promise.all`. The LED page-1 example-matching step (`product-examples.mjs`)
+was never investigated — unknown whether it's fixable.
+
+### Server state at end of session
+
+Both dev processes (Vite editor :5173, API :5174) were started and killed
+repeatedly near the end of the session. `npm start` uses
+`concurrently -k`, so killing either one kills both — restarting the API alone
+(as this session did, via a standalone `node --use-system-ca server/index.js`)
+does not restart the editor if the editor died too. If the app isn't
+responding tomorrow, run `npm start` fresh from `app/`.
 
 ### Latest fix: destination-neutral Upload file
 

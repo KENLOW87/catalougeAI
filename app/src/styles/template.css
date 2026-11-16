@@ -241,6 +241,9 @@
 }
 .dp-visuals { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); gap: 2mm; }
 .dp-visuals--paired { grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr); }
+.dp-item--source-pair .dp-visuals--paired { grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr); }
+.dp-item--source-pair .dp-drawing-frame { grid-column: 1; grid-row: 1; }
+.dp-item--source-pair .dp-photo { grid-column: 2; grid-row: 1; }
 .dp-visuals--variants { grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); }
 .dp-visuals--stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: 34mm 24mm; align-content: center; }
 .dp-visuals--stacked .dp-photo, .dp-visuals--stacked .dp-drawing-frame { border: 0; padding: 0; }
@@ -249,6 +252,14 @@
 .dp-visuals--featured .dp-drawing-frame { width: 38%; justify-self: center; }
 .dp-row--single .dp-visuals--paired { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .dp-row--single .dp-visuals--featured { grid-template-columns: minmax(0, 1fr); }
+/* Source-row sheet layouts such as PVC Foam Board keep the product details on
+   the left and the complete product photo large on the right. */
+.dp-item--source-row { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.75fr); grid-template-rows: minmax(0, 1fr); column-gap: 6mm; }
+.dp-item--source-row > .dp-visuals { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--source-row > .dp-source-row-info { grid-column: 1; grid-row: 1; align-self: center; min-width: 0; }
+.dp-item--source-row .dp-source-row-info .dp-name { text-align: left; font-size: 6mm; line-height: 7mm; margin-top: 0; }
+.dp-item--source-row .dp-source-row-info .dp-sub { text-align: left; font-size: 3.6mm; line-height: 5mm; margin-top: 2mm; }
+.dp-item--source-row .dp-photo { border: 0; padding: 0; }
 /* Each visual gets a quiet frame. The image itself is always contain-sized: the
    frame may shrink it to fit, but it can never crop the source rectangle. */
 .dp-photo, .dp-drawing-frame {
@@ -268,7 +279,7 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
 .dp-visuals--technical-variants > .dp-photo { padding: 2mm 3mm; }
 .dp-technical-variants { width: 100%; height: 100%; min-width: 0; min-height: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 2mm; }
 .dp-technical-variants figure { min-width: 0; min-height: 0; margin: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 1.5mm; }
-.dp-technical-variant-media { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, .55fr) minmax(0, 1.8fr); gap: 2mm; align-items: stretch; }
+.dp-technical-variant-media { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 2.2fr); gap: 2mm; align-items: stretch; }
 .dp-technical-variant-media > img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; padding: 1mm; box-sizing: border-box; }
 .dp-technical-variant-media > img:last-child:not(:first-child) { border-left: .25mm solid #e3e7eb; }
 .dp-technical-variants figcaption { text-align: center; font-size: 3.2mm; line-height: 4.2mm; font-weight: 650; color: #343a40; }
@@ -283,6 +294,18 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
 .dp-item--examples .dp-photo img { width: var(--example-image-size, 32mm); height: var(--example-image-size, 32mm); max-width: 100%; max-height: 100%; object-fit: contain; }
 .dp-examples-grid figcaption { font-size: 2.3mm; line-height: 2.7mm; text-align: center; }
 .dp-item--display-examples { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; column-gap: 2mm; }
+/* Product + dimension drawing + display is a first-class three-slot layout.
+   The product receives the largest slot, while the measurement and display
+   each get their own aligned frame. Keeping the three roles as separate grid
+   items prevents a drawing from being mistaken for a display or squeezed into
+   the product photo's frame. */
+.dp-item--display-examples-with-drawing { grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr) minmax(0, 1fr); }
+.dp-item--display-examples-with-drawing > .dp-visuals { display: contents; padding: 0; }
+.dp-item--display-examples-with-drawing > .dp-photo { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing > .dp-drawing-frame { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing > .dp-examples { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing > .dp-name { grid-column: 1 / -1; grid-row: 2; }
+.dp-item--display-examples-with-drawing > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
 /* Reserve the same heading/caption space on both sides so photos line up,
    rather than centring the product against the display photo AND its caption. */
 .dp-item--display-examples > .dp-visuals { grid-column: 1; grid-row: 1; padding-block: 4mm 8.1mm; }
@@ -296,6 +319,15 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
 .dp-item--display-examples .dp-examples-grid img { display: block; width: 100%; height: 100%; min-height: 0; max-height: 100%; }
 .dp-item--display-examples > .dp-name { grid-column: 1 / -1; grid-row: 2; }
 .dp-item--display-examples > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
+/* Re-assert the three-slot placement after the shared side-by-side rules
+   above, whose two-column defaults intentionally remain for products without
+   a technical drawing. */
+.dp-item--display-examples-with-drawing > .dp-visuals { display: contents; grid-column: auto; grid-row: auto; padding: 0; }
+.dp-item--display-examples-with-drawing > .dp-photo { grid-column: 1; grid-row: 1; }
+.dp-item--display-examples-with-drawing > .dp-drawing-frame { grid-column: 2; grid-row: 1; }
+.dp-item--display-examples-with-drawing > .dp-examples { grid-column: 3; grid-row: 1; }
+.dp-item--display-examples-with-drawing > .dp-name { grid-column: 1 / -1; grid-row: 2; }
+.dp-item--display-examples-with-drawing > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
 .dp-missing { font-size: 3mm; color: #b07711; }
 
 .dp-name { text-align: center; font-size: 4.6mm; line-height: 5.4mm; font-weight: 800;

@@ -24,6 +24,7 @@ const dataUrl = img => `data:image/png;base64,${toBuffer(img).toString('base64')
  *            scanWidthMm?:number, minSizeMm?:number, maxSizeMm?:number}} anchor
  * @property {Array<{key:string, type:'text'|'photo'|'lineart'|'finishes',
  *                   box:{x:number,y:number,w:number,h:number},
+ *                   trustedSourceCrop?:boolean,
  *                   labelBox?:{x:number,y:number,w:number,h:number},
  *                   repair?:'size'|'length', vocab?:boolean}>} fields
  */
@@ -734,7 +735,11 @@ export async function readWithSpec(page, spec) {
         // whole anchor is dropped rather than imported as a blank entry to fix later.
         if (f.required && (!value || (f.matches && !f.matches.test(value)))) product.__reject = true
       } else if (f.type === 'photo') {
+        // Source PDF images are already framed by the reader. Preserve the
+        // complete captured frame, including any labels/captions inside it;
+        // later import preparation must not tighten, isolate or rewrite it.
         if (f.preserveScene && f.key === 'photo') product.photoTreatmentMode = 'preserve-scene'
+        else if (f.key === 'photo' && f.trustedSourceCrop !== false) product.photoTreatmentMode = 'trusted-source-crop'
         // A card's title can be one line or two, and its total height can vary
         // ("hero" cards spanning extra columns are shorter overall) — a photo box
         // measured at a fixed offset from the top then either starts inside the

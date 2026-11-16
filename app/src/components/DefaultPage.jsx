@@ -47,10 +47,24 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
   const variants = (p.finishes ?? p.variants ?? []).filter(v => v?.photo)
   const technicalVariants = p.variantTechnical ? variants : []
   const sideBySide = examplesBesideProduct(examples)
+  // A product can legitimately have all three visual roles at once: its own
+  // photo, a technical/dimension drawing, and an installation/display photo.
+  // Keep the display in the right-hand panel while the product photo and
+  // drawing stay together on the left; do not let the display turn the drawing
+  // into a tiny third column or push it below the product.
+  const displayWithDrawing = showDrawing && sideBySide && !technicalVariants.length
   const technicalPair = p.layoutPairGroup === 'aluminium-corners' && showDrawing && !examples.length
+  const sourcePair = p.readBy === 'rules' && p.sourcePage === 8 && showDrawing && !examples.length
+  const sourceRow = p.categoryId === 'pvc-foam-board' && p.sourcePage === 2
   const exampleColumns = Math.min(sideBySide ? 2 : 4, examples.length)
+  const info = <>
+    <div className="dp-name">{p.name}</div>
+    {(dimensionsOnly || p.subtitle || p.third) && (
+      <div className="dp-sub">{[dimensionsOnly ? p.dimensionText : p.subtitle, p.third].filter(Boolean).join(' · ')}</div>
+    )}
+  </>
   return (
-    <div className={`dp-item ${examples.length ? 'dp-item--examples' : ''} ${sideBySide ? 'dp-item--display-examples' : ''} ${technicalPair ? 'dp-item--technical-pair' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}
+    <div className={`dp-item ${examples.length ? 'dp-item--examples' : ''} ${sideBySide ? 'dp-item--display-examples' : ''} ${displayWithDrawing ? 'dp-item--display-examples-with-drawing' : ''} ${technicalPair ? 'dp-item--technical-pair' : ''} ${sourcePair ? 'dp-item--source-pair' : ''} ${sourceRow ? 'dp-item--source-row' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />
@@ -96,10 +110,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
           </div>
         </div>
       )}
-      <div className="dp-name">{p.name}</div>
-      {(dimensionsOnly || p.subtitle || p.third) && (
-        <div className="dp-sub">{[dimensionsOnly ? p.dimensionText : p.subtitle, p.third].filter(Boolean).join(' · ')}</div>
-      )}
+      {sourceRow ? <div className="dp-source-row-info">{info}</div> : info}
       {editable && <Hit product={p} onEdit={onEdit} onDelete={onDelete} />}
     </div>
   )
@@ -170,18 +181,12 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
       const sourceIndex = page.sourcePage === 2 ? index : page.sourcePage === 3 ? index + 4 : -1
       const sourceTemplate = !sourceVariants.length && PVC_SEED[sourceIndex]
       const sourceTemplateVariants = sourceTemplate?.variants ?? []
-      const cornerExtra = sourceIndex === 4
-        ? (sourceTemplate?.extra ?? (typeof p.extra === 'string' ? p.extra : (p.extra?.image || p.extra?.photo || null)))
-        : null
-      let variants = sourceVariants.length
+      const variants = sourceVariants.length
         ? sourceVariants
         : (sourceTemplateVariants.length ? sourceTemplateVariants : (p.photo ? [{ id: `${p.id}-source-photo`, photo: p.photo, name: '' }] : []))
-      if (cornerExtra && variants.length === 4 && sourceIndex === 4 && !variants[3].secondaryPhoto) {
-        variants = [...variants.slice(0, 3), { ...variants[3], secondaryPhoto: cornerExtra }]
-      }
-      const extra = sourceIndex === 4 ? null : (sourceTemplate?.extra ?? (typeof p.extra === 'string'
+      const extra = sourceTemplate?.extra ?? (typeof p.extra === 'string'
         ? p.extra
-        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null)))
+        : (p.extra?.image || p.extra?.photo || (p.examples?.length === 1 ? p.examples[0]?.image : null) || null))
       const rawSize = p.size ?? p.subtitle ?? ''
       return { ...p,
       size: String(rawSize).replace(/^size\s*:\s*/i, ''),
@@ -229,7 +234,7 @@ export default function DefaultPage({ page, editable, onEdit, onDelete, category
 
       <div className="dp-flow" style={{ top: `${flowTop}mm` }}>
         {page.rows.map((row, i) => (
-          <div className={`dp-row ${row.sourceGroup ? 'dp-row--source-group' : ''} ${row.sourceGroupBundle?'dp-row--source-bundle':''} ${row.supportFor ? 'dp-row--support' : ''} ${row.length === 1 && row[0].drawing ? 'dp-row--single' : ''}`} key={i}
+          <div className={`dp-row ${row.sourceGroup ? 'dp-row--source-group' : ''} ${row.sourceGroupBundle?'dp-row--source-bundle':''} ${row.supportFor ? 'dp-row--support' : ''} ${row.length === 1 && (row[0].drawing || row[0].layoutFullRow || (row[0].categoryId === 'pvc-foam-board' && row[0].sourcePage === 2)) ? 'dp-row--single' : ''}`} key={i}
                style={{ gridTemplateColumns: row.sourceGroupBundle?'minmax(0,1fr)':`repeat(${Math.max(1, Math.min(columns, row.length))}, minmax(0, 1fr))`, height: `${row.sourceGroupBundle ? 289-flowTop : (page.rowHeights?.[i] ?? pageRowH)}mm`, marginBottom: `${page.rowGap ?? 5}mm` }}>
             {row.sourceGroupBundle ? <div className="dp-source-group-bundle">
               <SourceGroupCards row={row} columns={columns} editable={editable} onEdit={onEdit} onDelete={onDelete} highlight={highlight}/>

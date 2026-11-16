@@ -23,6 +23,7 @@ export const PARENTS = [
   { id: 'pu-stone',               title: 'PU Stone',                 edition: 'Jan 2026',       children: [] },
   { id: 'pvc-marble-sheet',       title: 'PVC Marble Sheet',         edition: 'Jan 2026',       children: [] },
   { id: 'pvc-marble-sheet-3d',    title: 'PVC Marble Sheet 3D',      edition: 'September 2025', children: [] },
+  { id: 'pvc-foam-board',         title: 'PVC Foam Board',            edition: 'April 2026',     children: [] },
   { id: 'pvc-rattan-webbing-aug', title: 'PVC Rattan Webbing',       edition: 'August 2025',    children: [] },
   { id: 'pvc-rattan-webbing-jan', title: 'PVC Rattan Webbing',       edition: 'Jan 2026',       children: [] },
   { id: 'wainscoting-mirror',     title: 'Wainscoting & Mirror',     edition: 'Jan 2026',       children: [] },

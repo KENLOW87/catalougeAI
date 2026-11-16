@@ -51,61 +51,61 @@ export const blankVariant = () => ({
 })
 
 const A = 'public/assets/pvc'
-const v = (id, name, i, assetId = id) => ({ id: `${id}-v${i}`, name, photo: `/assets/pvc/${assetId}-v${i}.png` })
+const ASSET_VERSION = '2026-11-02-dimension-only-transparent'
+const asset = path => `${path}?v=${ASSET_VERSION}`
+const v = (id, name, i, assetId = id) => ({ id: `${id}-v${i}`, name, photo: `/assets/pvc/${assetId}-v${i}.png?v=${ASSET_VERSION}` })
 
 // The 7 products as extracted from pages 2-3.
 export const PVC_SEED = [
   {
     id: 'h-profile', name: 'H Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/h-profile-drawing.png', extra: null, exceptions: null,
+    drawing: asset('/assets/pvc/h-profile-drawing.png'), extra: null, exceptions: null,
     variants: [v('h-profile', 'Silver', 0), v('h-profile', 'Rose Gold', 1), v('h-profile', 'Gold', 2), v('h-profile', 'Black', 3)],
   },
   {
     id: 't-profile', name: 'T Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/t-profile-drawing.png', extra: '/assets/pvc/t-profile-extra.png', exceptions: null,
+    drawing: asset('/assets/pvc/t-profile-drawing.png'), extra: asset('/assets/pvc/t-profile-extra.png'), exceptions: null,
     variants: [v('t-profile', 'Silver', 0), v('t-profile', 'Rose Gold', 1), v('t-profile', 'Gold', 2), v('t-profile', 'Black', 3)],
   },
   {
     id: 'end-profile', name: 'END Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/end-profile-drawing.png', extra: '/assets/pvc/end-profile-extra.png', exceptions: null,
+    drawing: asset('/assets/pvc/end-profile-drawing.png'), extra: asset('/assets/pvc/end-profile-extra.png'), exceptions: null,
     variants: [v('end-profile', 'Silver', 0), v('end-profile', 'Rose Gold', 1), v('end-profile', 'Gold', 2), v('end-profile', 'Black', 3)],
   },
   {
     // Only three finishes — no Rose Gold. The variant list is genuinely variable length.
     id: 'w-profile', name: 'W Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/w-profile-drawing.png', extra: '/assets/pvc/w-profile-extra.png', exceptions: null,
+    drawing: asset('/assets/pvc/w-profile-drawing.png'), extra: asset('/assets/pvc/w-profile-extra.png'), exceptions: null,
     variants: [v('w-profile', 'Silver', 0), v('w-profile', 'Gold', 1), v('w-profile', 'Black', 2)],
   },
   {
     id: 'corner-profile', name: 'CORNER Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/corner-profile-drawing.png', extra: '/assets/pvc/corner-profile-extra.png', exceptions: null,
-    // The source extraction stored this row under the L Profile 10 asset names.
-    variants: [v('corner-profile', 'Silver', 0, 'l-profile-10'), v('corner-profile', 'Rose Gold', 1, 'l-profile-10'), v('corner-profile', 'Gold', 2, 'l-profile-10'), v('corner-profile', 'Black', 3, 'l-profile-10')],
+    drawing: asset('/assets/pvc/corner-profile-drawing.png'), extra: asset('/assets/pvc/corner-profile-extra.png'), exceptions: null,
+    variants: [v('corner-profile', 'Silver', 0), v('corner-profile', 'Rose Gold', 1), v('corner-profile', 'Gold', 2), v('corner-profile', 'Black', 3)],
   },
   {
     // Carries the source PDF's two exceptions: the White finish is shown at
     // 15mm and 20mm, each with its own photo and dimension drawing.
     id: 'l-profile-14', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/l-profile-14-drawing.png', extra: null,
+    drawing: asset('/assets/pvc/l-profile-14-drawing.png'), extra: null,
     variants: [v('l-profile-14', 'Silver', 0), v('l-profile-14', 'Rose Gold', 1), v('l-profile-14', 'Gold', 2), v('l-profile-14', 'Black', 3)],
     exceptions: [
       {
-        variant: { id: 'l14-white-15', name: 'White', photo: '/assets/pvc/l-profile-14-white-15.png' },
-        drawing: '/assets/pvc/l-profile-14-white-15-drawing.png',
+        variant: { id: 'l14-white-15', name: 'White', photo: asset('/assets/pvc/l-profile-14-white-15.png') },
+        drawing: asset('/assets/pvc/l-profile-14-white-15-drawing.png'),
         note: '(This size only for White Color)',
       },
       {
-        variant: { id: 'l14-white-20', name: 'White', photo: '/assets/pvc/l-profile-14-white.png' },
-        drawing: '/assets/pvc/l-profile-14-white-drawing.png',
+        variant: { id: 'l14-white-20', name: 'White', photo: asset('/assets/pvc/l-profile-14-white.png') },
+        drawing: asset('/assets/pvc/l-profile-14-white-drawing.png'),
         note: '(This size only for White Color)',
       },
     ],
   },
   {
     id: 'l-profile-10', name: 'L Profile', size: `9'5"`, series: 'PVC Marble',
-    drawing: '/assets/pvc/l-profile-10-drawing.png', extra: null, exceptions: null,
-    // This source row was extracted under the CORNER asset names.
-    variants: [v('l-profile-10', 'Silver', 0, 'corner-profile'), v('l-profile-10', 'Rose Gold', 1, 'corner-profile'), v('l-profile-10', 'Gold', 2, 'corner-profile'), v('l-profile-10', 'Black', 3, 'corner-profile')],
+    drawing: asset('/assets/pvc/l-profile-10-drawing.png'), extra: null, exceptions: null,
+    variants: [v('l-profile-10', 'Silver', 0), v('l-profile-10', 'Rose Gold', 1), v('l-profile-10', 'Gold', 2), v('l-profile-10', 'Black', 3)],
   },
 ]
 

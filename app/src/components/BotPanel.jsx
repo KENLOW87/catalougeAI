@@ -187,7 +187,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
       setAttachment(a => (a?.raw === action.value ? { ...a, clean: edited.dataUrl, useClean: true } : a))
       activityStatus(jobId, 'applied', 'ai-clean-attachment')
       setLog(prev => prev.map((m, k) => (k === i ? { ...m, done: true,
-        propose: { ...m.propose, detail: `Produk sahaja diasingkan dengan AI — tangan dan latar dibuang, bentuk serta angle asal dikekalkan.${edited.light ? ' Latar gelap ditambah kerana produk cerah.' : ''}` } } : m)))
+        propose: { ...m.propose, preview: edited.dataUrl, detail: `Produk sahaja diasingkan dengan AI — tangan dan latar dibuang, bentuk serta angle asal dikekalkan.${edited.light ? ' Latar gelap ditambah kerana produk cerah.' : ''}` } } : m)))
     } catch (error) {
       activityStatus(jobId, 'background-review', error.message)
       setLog(prev => prev.map((m, k) => (k === i ? { ...m, done: true, propose: null,
@@ -444,6 +444,14 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     requestAnimationFrame(() => inputRef.current?.focus())
   }
 
+  // Closing while a cutout is running or a proposal is still waiting for a
+  // click would hide that work with no sign it is still going on — ask first.
+  const closeBot = () => {
+    const unresolved = bgBusy || busy || log.some(m => m.propose && !m.done)
+    if (unresolved && !confirm('Assistant masih memproses atau ada cadangan belum diputuskan. Tutup juga?')) return
+    setOpen(false)
+  }
+
   return (
     <>
       {open && (
@@ -454,7 +462,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
               <b>Catalogue assistant</b>
               <span>{category?.title ?? 'No catalogue open'} — {summary.text}</span>
             </div>
-            <button className="bot-x" onClick={() => setOpen(false)} aria-label="Close">✕</button>
+            <button className="bot-x" onClick={closeBot} aria-label="Close">✕</button>
           </header>
 
           <div className="bot-log" ref={boxRef}>
@@ -497,7 +505,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
                     {/* Seeing the actual photo before clicking Apply is the real
                         safeguard here — there is no name or code to double-check
                         against, only the picture itself. */}
-                    {m.propose.preview && <img className="thumb thumb--sm" src={m.propose.preview} alt="" />}
+                    {m.propose.preview && <img className="thumb thumb--preview" src={m.propose.preview} alt="" />}
                     <p>{m.propose.detail}</p>
                     {m.done ? (
                       <span className="proposal-done">Done.</span>
@@ -605,7 +613,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
       )}
 
       <button className={`bot-bubble ${open ? 'bot-bubble--open' : ''}`}
-              onClick={() => setOpen(v => !v)}
+              onClick={() => (open ? closeBot() : setOpen(true))}
               title="Catalogue assistant" aria-label="Catalogue assistant">
         <Avatar size={34} />
         {!open && problems > 0 && <span className="bot-badge">{problems}</span>}

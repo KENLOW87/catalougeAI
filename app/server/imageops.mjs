@@ -133,6 +133,17 @@ export function keepInk(img, cut = 185) {
   return out
 }
 
+// Technical drawings should sit cleanly beside a product on any catalogue tint.
+// Preserve the original coloured/black marks while making the white paper transparent.
+export function whiteToTransparent(img, cut = 247) {
+  const out = { width: img.width, height: img.height, data: Buffer.from(img.data) }
+  for (let i = 0; i < out.data.length; i += 4) {
+    const lum = 0.299 * out.data[i] + 0.587 * out.data[i + 1] + 0.114 * out.data[i + 2]
+    out.data[i + 3] = lum >= cut ? 0 : Math.max(0, Math.min(255, Math.round((cut - lum) * 5)))
+  }
+  return out
+}
+
 const inkMask = (img, white) => {
   const { width, height, data } = img
   const m = new Uint8Array(width * height)

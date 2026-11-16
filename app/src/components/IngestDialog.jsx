@@ -4,7 +4,9 @@ import { reconcile, applyReconcile } from '../lib/reconcile.js'
 import { apiUrl } from '../lib/api.js'
 import { beginActivity, activityStatus, activityHeaders, recordImageUpload } from '../lib/activity.js'
 import { processBackground } from '../lib/bgremove.js'
+import { finishProductPhoto } from '../lib/product-photo.js'
 import { assessBackgroundRemoval } from '../lib/image-quality.js'
+import { repairLegacyAccessoriesProducts } from '../lib/repair-known-source.js'
 
 // Upload a catalogue PDF -> the AI reads it -> YOU review what it found -> it is added.
 //
@@ -107,7 +109,16 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     }
     const plans = {}
     for (const [cat, list] of Object.entries(byCat)) {
-      plans[cat] = reconcile(existingByCategory?.[cat] ?? [], list)
+      // Known Accessories source layouts have a local repair pass. Apply it to
+      // fresh drafts as well as saved records: page 6 contains two separate
+      // Aluminum End Bend products (5mm and 8mm), while older readers could
+      // return one technical-variant record with two finishes. If we repair
+      // only on load, re-import review still shows the stale merged draft as a
+      // position-matched conflict.
+      const repaired = cat === 'accessories'
+        ? repairLegacyAccessoriesProducts(cat, list)
+        : list
+      plans[cat] = reconcile(existingByCategory?.[cat] ?? [], repaired)
     }
     return plans
   }
@@ -121,8 +132,15 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     const jobs = []
     for (const source of result.products ?? []) {
       const product = { ...source }
+      // Most trusted source crops are deliberately preserved because they can
+      // be installed/context scenes or source-declared galleries. PVC Foam
+      // Board page 2 is different: its large white-background rectangles are
+      // standalone product photos, so they must go through product-only
+      // treatment as well.
+      const isolatePvcFoamPhoto = product.categoryId === 'pvc-foam-board' && product.sourcePage === 2
+      const trustedPdfPhoto = product.readBy === 'rules' && product.sourcePage != null && product.sourceBox && !isolatePvcFoamPhoto
       if (!product.isPage) {
-        if (product.photo && product.photoTreatmentMode !== 'preserve-scene') {
+        if (product.photo && !trustedPdfPhoto && !['preserve-scene', 'trusted-source-crop'].includes(product.photoTreatmentMode)) {
           jobs.push({ product, owner: product, key: 'photo', label: `${product.name || 'product'} photo` })
         }
         // An unclassified extra may be an installation scene, instruction or
@@ -134,7 +152,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
         for (const key of ['finishes', 'variants']) {
           if (Array.isArray(product[key])) {
             product[key] = product[key].map(item => ({ ...item }))
-            for (const item of product[key]) if (item.photo && item.photoTreatmentMode !== 'preserve-scene') jobs.push({ product, owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
+            for (const item of product[key]) if (item.photo && !((product.readBy === 'rules' && product.sourcePage != null && item.sourceBox) || item.photoTreatmentMode === 'preserve-scene')) jobs.push({ product, owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
           }
         }
       }
@@ -146,17 +164,26 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       setProgress(`Preparing product photos locally — ${i + 1} of ${jobs.length}…`)
       const original = owner[key]
       try {
-        const cleaned = await processBackground(original, { force: true })
-        const quality = await assessBackgroundRemoval(original, cleaned.dataUrl)
+        const cutout = await processBackground(original, { force: true })
+        const quality = await assessBackgroundRemoval(original, cutout.dataUrl)
+        // Tighten transparent bounds after segmentation. This removes the old
+        // PDF rectangle/margins without changing angle or proportions, and
+        // gives light products a neutral contrast background.
+        const cleaned = await finishProductPhoto(cutout.dataUrl)
         owner[`${key}Original`] = original
         owner[`${key}Transparent`] = cleaned.dataUrl
         owner[`${key}Quality`] = quality
-        owner[`${key}DisplayBackground`] = quality.displayBackground
-        // A doubtful cutout must never make the whole product disappear. Keep the
-        // transparent candidate for comparison, but publish the intact original
-        // until the administrator explicitly accepts a better result.
-        owner[key] = quality.needsReview ? original : cleaned.dataUrl
-        owner[`${key}Treatment`] = quality.needsReview ? 'original-quality-fallback' : 'product-only-local-v2-validated'
+        owner[`${key}DisplayBackground`] = cleaned.light ? 'dark-neutral' : quality.displayBackground
+        if (key === 'photo') owner.photoDisplayBackground = cleaned.light ? 'dark-neutral' : quality.displayBackground
+        // A doubtful cutout normally keeps the intact source for review. The
+        // known PVC Foam Board product-photo source is explicitly product-only,
+        // so its cleaned candidate remains the published photo while the
+        // quality findings stay visible in review.
+        const forcePvcFoamProductOnly = product.categoryId === 'pvc-foam-board' && product.sourcePage === 2
+        owner[key] = quality.needsReview && !forcePvcFoamProductOnly ? original : cleaned.dataUrl
+        owner[`${key}Treatment`] = quality.needsReview && !forcePvcFoamProductOnly
+          ? 'original-quality-fallback'
+          : (forcePvcFoamProductOnly ? 'product-only-local-v2-forced' : 'product-only-local-v2-validated')
         const review = quality.findings.filter(finding => finding.severity !== 'info').map(finding => ({
           ...finding, asset: key, ownerId: owner.id ?? product.id, label,
         }))
@@ -427,8 +454,18 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     removing: acc.removing + p.missing.filter(m => dropMissing.has(m.id)).length,
   }), { added: 0, matched: 0, missing: 0, removing: 0 })
 
+  // A stray click on the dimmed backdrop must never silently throw away a
+  // reviewed import — the admin may have spent minutes checking drafts and
+  // typing a catalogue name. Only 'review' has anything to lose; 'pick' and
+  // 'error' are one click from where a Cancel would have left them anyway.
+  const closeOnBackdrop = () => {
+    if (phase === 'working') return
+    if (phase === 'review' && !confirm('Discard this review? Nothing has been added to the catalogue yet.')) return
+    onCancel()
+  }
+
   return (
-    <div className="modal-backdrop" onClick={phase === 'working' ? undefined : onCancel}>
+    <div className="modal-backdrop" onClick={closeOnBackdrop}>
       <div className="modal modal--wide" onClick={e => e.stopPropagation()}>
 
         {phase === 'pick' && (

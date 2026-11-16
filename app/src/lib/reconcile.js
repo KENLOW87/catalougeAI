@@ -20,6 +20,18 @@ const TEXT_FIELDS = ['colour', 'length', 'size', 'series', 'subtitle', 'third']
 const finishNames = p =>
   (p.variants ?? p.finishes ?? []).map(f => norm(f.name)).filter(Boolean)
 
+// Duplicate names are common in source catalogues. When the reader preserved
+// the source page and technical line, use those as a stronger identity than
+// list position. This is what distinguishes page 6's separate 5mm and 8mm
+// Aluminum End Bend products during re-import.
+const sourceIdentityMatch = (existing, draft) => {
+  if (existing?.sourcePage == null || draft?.sourcePage == null) return false
+  if (Number(existing.sourcePage) !== Number(draft.sourcePage)) return false
+  const existingThird = key(existing.third || existing.size || existing.subtitle)
+  const draftThird = key(draft.third || draft.size || draft.subtitle)
+  return Boolean(existingThird && draftThird && existingThird === draftThird)
+}
+
 /**
  * @returns {{
  *   matched: Array<{existing, draft, diffs: Array<{field, from, to}>, ambiguous: boolean}>,
@@ -44,14 +56,16 @@ export function reconcile(existing, drafts) {
     const k = key(draft.name)
     const bucket = pool.get(k)
     if (bucket && bucket.length) {
-      const { p, i } = bucket.shift()
+      const exactIndex = bucket.findIndex(({ p }) => sourceIdentityMatch(p, draft))
+      const exact = exactIndex >= 0 ? bucket.splice(exactIndex, 1)[0] : bucket.shift()
+      const { p, i } = exact
       usedIdx.add(i)
       matched.push({
         existing: p,
         draft,
         diffs: diffOf(p, draft),
         // Flag a match that relied on order because several share the name.
-        ambiguous: existing.filter(e => key(e.name) === k).length > 1,
+        ambiguous: existing.filter(e => key(e.name) === k).length > 1 && exactIndex < 0,
       })
     } else {
       added.push(draft)

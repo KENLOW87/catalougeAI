@@ -15,6 +15,10 @@ For display and imagePage operations you may return kind catalogue_intent with t
 
 export function needsSemanticReview(text, candidate) {
   if (!candidate?.propose && !candidate?.run) return false
+  // "add product in PVC Marble Sheet" already named a real catalogue (matched
+  // with the same confidence threshold the explicit "open X" command uses)
+  // and a clear creation verb — nothing left for the AI to disambiguate.
+  if (candidate.run?.type === 'addProduct' && candidate.run?.catalogueId) return false
   // A valid local match can still be wrong when it covers only one clause.
   // Review conflicting named targets, exclusions and multiple action clauses.
   const words = text.replace(/\b(?:jangan|do not|don't)\s+(?:buang|remove|ubah|change)\s+(?:background|latar belakang)\b/gi, '')

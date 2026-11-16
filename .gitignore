@@ -10,3 +10,5 @@ extract/
 !.env.example
 app/__scratch_*.mjs
 app/data/activity/
+app/data/published/
+app/.cache/
