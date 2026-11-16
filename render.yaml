@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: geometra-catalogue-backend
+    runtime: docker
+    dockerfilePath: ./app/Dockerfile
+    dockerContext: ./app
+    healthCheckPath: /api/ai/status
+    # Without this, app/data/ (activity logs, published-catalogue snapshots) lives
+    # on the container's writable layer and is wiped on every redeploy — publishing
+    # would silently appear to work and then vanish. WORKDIR in app/Dockerfile is
+    # /app, and `COPY . .` puts the repo's app/data at /app/data inside the image.
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: FRONTEND_URL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-1.5
+      - key: CATALOGUE_ENABLE_AI_FALLBACK
+        value: "0"

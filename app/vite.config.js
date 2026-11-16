@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [react()],
@@ -31,5 +32,16 @@ export default defineConfig({
       },
     },
   },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    // Two pages share this one Vite project: the admin editor (index.html) and
+    // the public read-only site (public.html). Without this, `vite build` only
+    // ever emits index.html and the public site is silently absent from dist/.
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        public: fileURLToPath(new URL('./public.html', import.meta.url)),
+      },
+    },
+  },
 })

@@ -14,7 +14,7 @@ const includesProduct = (value, id) => value && typeof value === 'object' &&
 
 // Only the reader's viewport changes. Each sheet is still the exact Page
 // component used by Catalogue's full-document PDF export.
-export default function CatalogueViewer({ category, pages, zoom, onZoomChange, onEdit, onDelete, highlight = [] }) {
+export default function CatalogueViewer({ category, pages, zoom, onZoomChange, onEdit, onDelete, highlight = [], onPublish, onUnpublish }) {
   const [positions, setPositions] = useState(stored)
   const [mode, setMode] = useState(() => stored().mode === 'single' ? 'single' : 'spread')
   const [fit, setFit] = useState(true)
@@ -75,6 +75,12 @@ export default function CatalogueViewer({ category, pages, zoom, onZoomChange, o
   return <section className="catalogue-viewer" ref={reader} aria-label="Catalogue reader">
     <div className="reader-toolbar">
       <strong className="reader-title">{category.title}</strong>
+      {(onPublish || onUnpublish) && (
+        <div className="reader-publish" role="group" aria-label="Publish to the public site">
+          {onPublish && <button onClick={onPublish}>Publish</button>}
+          {onUnpublish && <button onClick={onUnpublish}>Unpublish</button>}
+        </div>
+      )}
       <div className="reader-modes" role="group" aria-label="Page layout">
         <button aria-pressed={mode === 'single'} onClick={() => { setMode('single'); setFit(true) }}>1 page</button>
         <button aria-pressed={mode === 'spread'} onClick={() => { setMode('spread'); setFit(true) }}>2 pages</button>

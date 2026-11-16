@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { DISPLAY_INTENT_GUIDANCE, CONVERSATION_GUIDANCE, IMAGE_PAGE_POSITION_GUIDANCE, displayIntentContext, conversationContext } from './display-intent.mjs'
 import { BOT_CAPABILITY_GUIDANCE } from '../src/lib/bot-capabilities.js'
 import { installActivity } from './activity.mjs'
+import { installPublish } from './publish.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 if (existsSync(join(__dirname, '../.env'))) loadEnvFile(join(__dirname, '../.env'))
@@ -38,6 +39,7 @@ app.use((req, res, next) => {
 
 // Use the Chrome already installed on this machine rather than downloading one.
 installActivity(app)
+installPublish(app)
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH

@@ -9,32 +9,19 @@ import { addImagePage } from './lib/image-page.js'
 import { applyImageRemoval } from './lib/image-removal.js'
 import Dashboard from './components/Dashboard.jsx'
 import {
-  CATEGORIES, CATEGORY_IDS, DEFAULT_CATEGORY, getCategory,
+  CATEGORIES, CATEGORY_IDS, DEFAULT_CATEGORY,
   PARENTS, DEFAULT_PARENT, getParent, parentLabel, parentOfCategory,
 } from './lib/categories/index.js'
-import { defaultCategoryFor } from './lib/categories/default.js'
 import { apiUrl } from './lib/api.js'
 import { repairSourcePlacement } from './lib/repair-source-placement.js'
 import { upsertSeriesProduct } from './lib/product-order.js'
 import { repairLegacyAccessoriesProducts } from './lib/repair-known-source.js'
+import { resolveCategory } from './lib/resolveCategory.js'
 import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, removeCustomCategory, clearAll } from './lib/store.js'
 
 const parentById = id => PARENTS.find(p => p.id === id)
 const LEGACY_ACCESSORIES = new Set(['accessories-led', 'pvc-marble'])
 const currentCategoryId = id => LEGACY_ACCESSORIES.has(id) ? 'accessories' : id
-
-// A family with no sub-catalogue is itself a catalogue, so its id doubles as a
-// category id. Built-in categories keep their bespoke template; a family without one
-// gets the default page, built round the header lifted from its own PDF.
-const resolveCategory = (id, chrome, custom = {}) => {
-  if (CATEGORIES[id]) return CATEGORIES[id]
-  const family = parentById(id) ?? custom[id]
-  // A created catalogue has no bespoke template, so it prints on the default page —
-  // exactly like the shipped families that have none. Without this it fell through
-  // to getCategory(), which returns the LED catalogue for anything it knows nothing
-  // about, and a new catalogue would have rendered as LED.
-  return family ? defaultCategoryFor(family, chrome) : getCategory(id)
-}
 
 /**
  * What the assistant says once an import has been applied.
@@ -491,6 +478,35 @@ export default function App() {
     )
   }
 
+  // Snapshot this catalogue's current data to the server so the public, read-only
+  // site can show it — further edits here do not reach the public site until this
+  // is pressed again. Same status-line pattern as export (`setBusy`), not a new one.
+  const publishCategory = async () => {
+    setBusy(`Publishing ${category.title}…`)
+    try {
+      const res = await fetch(apiUrl(`/api/publish/${categoryId}`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products, chrome: chromeByCategory[categoryId] ?? null, title: category.title }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setBusy(`Published ${category.title} — live on the public site.`)
+    } catch (e) {
+      setBusy(`Publish failed: ${e.message}`)
+    }
+  }
+
+  const unpublishCategory = async () => {
+    setBusy(`Unpublishing ${category.title}…`)
+    try {
+      const res = await fetch(apiUrl(`/api/publish/${categoryId}`), { method: 'DELETE' })
+      if (!res.ok && res.status !== 404) throw new Error(await res.text())
+      setBusy(`Unpublished ${category.title} — removed from the public site.`)
+    } catch (e) {
+      setBusy(`Unpublish failed: ${e.message}`)
+    }
+  }
+
   // Print mode. The exporter always injects a LIST, so one catalogue and all of them
   // render through the same path; each catalogue is its own .cat-doc and the print
   // stylesheet breaks a page between them.
@@ -630,7 +646,8 @@ export default function App() {
           />
         ) : products.length > 0 ? (
           <CatalogueViewer category={category} pages={pages} zoom={zoom} onZoomChange={setZoom}
-                           onEdit={setEditing} onDelete={remove} highlight={highlight} />
+                           onEdit={setEditing} onDelete={remove} highlight={highlight}
+                           onPublish={publishCategory} onUnpublish={unpublishCategory} />
         ) : (
           <div className="canvas-empty">
             <h2>{parentLabel(parent)}</h2>
