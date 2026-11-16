@@ -9,7 +9,14 @@ const categoryFor = (id, parent, chrome) =>
 
 export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onResetAll, onExportData, onImportData, filledCount }) {
   const [showActivity, setShowActivity] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const importFileRef = useRef(null)
+  const dropImportFile = e => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = [...e.dataTransfer.files].find(f => f.type === 'application/json' || f.name.endsWith('.json'))
+    if (file) onImportData?.(file)
+  }
   const rows = useMemo(() => parents.flatMap(parent => {
     const ids = (parent.children.length ? parent.children : [parent.id]).filter(id => !deletedCategories[id])
     return ids.map(id => {
@@ -122,10 +129,13 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
           can run to hundreds of MB), then import that file wherever the admin
           is opened from next (e.g. a live deployment), without re-reading the
           source PDF and losing every manual edit made since. */}
-      <div className="dashboard-danger">
+      <div className={`dashboard-danger${dragOver ? ' dashboard-danger--dragover' : ''}`}
+           onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+           onDragLeave={() => setDragOver(false)}
+           onDrop={dropImportFile}>
         <div>
           <h2>Move data to another browser/site</h2>
-          <p>Use a catalogue card's own "Export" button above for one catalogue at a time (recommended — stays a reasonable size). "Export data" below bundles every catalogue into one file, which can be very large. Importing replaces only the catalogue(s) the file contains; everything else already here is left alone.</p>
+          <p>Use a catalogue card's own "Export" button above for one catalogue at a time (recommended — stays a reasonable size). "Export data" below bundles every catalogue into one file, which can be very large. Importing replaces only the catalogue(s) the file contains; everything else already here is left alone. Drag a backup .json file anywhere onto this box to import it.</p>
         </div>
         <div className="dashboard-card-actions">
           <button onClick={() => onExportData?.()}>Export data (everything, can be huge)</button>
