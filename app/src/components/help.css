@@ -1,0 +1,14 @@
+.help-overlay{position:fixed;inset:0;z-index:10000;background:#18233199;display:flex;align-items:center;justify-content:center;padding:20px}
+.help-panel{background:white;color:#182331;border-radius:14px;padding:24px;width:min(720px,96vw);max-height:92vh;overflow:auto;box-shadow:0 10px 50px #0004}
+.help-toolbar{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.help-panel h2{margin:0}
+.help-panel p{line-height:1.5}
+.help-step{margin-top:22px;padding-top:18px;border-top:1px solid #dae2eb}
+.help-step:first-of-type{border-top:none;padding-top:0}
+.help-step h3{margin:0 0 10px;display:flex;align-items:center;gap:10px}
+.help-step-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#0d7fc4;color:#fff;font-size:14px;font-weight:700;flex:none}
+.help-step ol{margin:0;padding-left:20px;line-height:1.7}
+.help-step ol li{margin-bottom:4px}
+.help-note{background:#eff5fb;border-radius:8px;padding:10px 14px;margin-top:12px;font-size:13.5px;line-height:1.5}
+.help-panel code{background:#eff0f3;padding:1px 5px;border-radius:4px;font-size:0.95em}
+.help-panel a{color:#0d7fc4}

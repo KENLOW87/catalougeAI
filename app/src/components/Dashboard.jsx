@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react'
 import ActivityPanel from './ActivityPanel.jsx'
+import HelpPanel from './HelpPanel.jsx'
 import { CATEGORIES, parentLabel } from '../lib/categories/index.js'
 import { defaultCategoryFor } from '../lib/categories/default.js'
 import { runQc } from '../lib/qc.js'
@@ -9,6 +10,7 @@ const categoryFor = (id, parent, chrome) =>
 
 export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onResetAll, onExportData, onImportData, filledCount }) {
   const [showActivity, setShowActivity] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const importFileRef = useRef(null)
   const dropImportFile = e => {
@@ -53,6 +55,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
   return (
     <div className="dashboard">
       {showActivity && <ActivityPanel onClose={() => setShowActivity(false)} />}
+      {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
       <div className="dashboard-head">
         <div>
           <p className="dashboard-kicker">GEOMETRA CATALOGUE AI</p>
@@ -61,6 +64,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
         </div>
         <div className="dashboard-head-actions">
           <button onClick={() => setShowActivity(true)}>Aktiviti &amp; Kos</button>
+          <button onClick={() => setShowHelp(true)}>Bantuan</button>
           <button onClick={() => onExportAll?.()} disabled={!filledCount}>Download all as PDF{filledCount ? ` — ${filledCount} catalogues` : ''}</button>
           {/* "Add catalogue" names NO destination at all. It used to preselect one —
               first a catalogue that already had products, then the first empty one —
