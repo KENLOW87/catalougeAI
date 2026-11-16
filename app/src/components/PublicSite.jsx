@@ -38,38 +38,85 @@ export default function PublicSite() {
     return () => { alive = false }
   }, [id])
 
+  const header = (
+    <header className="ps-header">
+      <a className="ps-brand" href="?" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <b>GEOMETRA</b><span>Catalogues</span>
+      </a>
+      {id && <a className="ps-back" href="?">&larr; All catalogues</a>}
+    </header>
+  )
+
   if (error) {
     return (
-      <main className="public-site">
-        <p>{error}</p>
-        {id && <p><a href="?">Back to all catalogues</a></p>}
-      </main>
+      <div className="public-site">
+        {header}
+        <main className="ps-main">
+          <div className="ps-state ps-state--error">
+            <span className="ps-state-icon">!</span>
+            <p>{error}</p>
+            {id && <p style={{ marginTop: 10 }}><a href="?">Back to all catalogues</a></p>}
+          </div>
+        </main>
+      </div>
     )
   }
 
   if (!id) {
     return (
-      <main className="public-site">
-        <h1>GEOMETRA Catalogues</h1>
-        {!list ? (
-          <p>Loading…</p>
-        ) : list.length === 0 ? (
-          <p>No catalogue has been published yet.</p>
-        ) : (
-          <ul>
-            {list.map(c => (
-              <li key={c.categoryId}>
-                <a href={`?id=${encodeURIComponent(c.categoryId)}`}>{c.title ?? c.categoryId}</a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </main>
+      <div className="public-site">
+        {header}
+        <main className="ps-main">
+          <div className="ps-intro">
+            <h1>Our catalogues</h1>
+            <p>Browse every catalogue currently published.</p>
+          </div>
+          {!list ? (
+            <div className="ps-state"><p>Loading catalogues…</p></div>
+          ) : list.length === 0 ? (
+            <div className="ps-state">
+              <span className="ps-state-icon">&#128214;</span>
+              <p>No catalogue has been published yet.</p>
+            </div>
+          ) : (
+            <div className="ps-grid">
+              {list.map(c => (
+                <a className="ps-card" key={c.categoryId} href={`?id=${encodeURIComponent(c.categoryId)}`}>
+                  <h3>{c.title ?? c.categoryId}</h3>
+                  {c.publishedAt && (
+                    <p className="ps-date">Updated {new Date(c.publishedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                  )}
+                  <span className="ps-cta">View catalogue</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </main>
+      </div>
     )
   }
 
-  if (!snapshot) return <main className="public-site"><p>Loading…</p></main>
+  if (!snapshot) {
+    return (
+      <div className="public-site">
+        {header}
+        <main className="ps-main"><div className="ps-state"><p>Loading…</p></div></main>
+      </div>
+    )
+  }
 
   const category = resolveCategory(snapshot.categoryId, snapshot.chrome)
-  return <Catalogue categoryId={snapshot.categoryId} category={category} products={snapshot.products} />
+  return (
+    <div className="public-site">
+      {header}
+      <main className="ps-main">
+        <div className="ps-doc-head"><h1>{snapshot.title ?? snapshot.categoryId}</h1></div>
+        <div className="ps-pages-scroll">
+          <div className="ps-pages">
+            <Catalogue categoryId={snapshot.categoryId} category={category} products={snapshot.products} />
+          </div>
+        </div>
+      </main>
+    </div>
+  )
 }
