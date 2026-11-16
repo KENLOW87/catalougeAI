@@ -104,7 +104,12 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       // the wrong catalogue before the destination suggestion was applied.
       const own = d.categoryId ?? null
       const requested = ['accessories-led', 'pvc-marble'].includes(destId) ? 'accessories' : destId
-      const cat = BUILTIN_CATS.includes(own) ? 'accessories' : (requested || own)
+      // Only the two legacy Accessories child layouts share the Accessories
+      // destination. Other authoritative built-in catalogues (Acoustic Panel,
+      // PVC Marble Sheet, Wainscoting, etc.) must keep their own category ID.
+      const cat = ['accessories-led', 'pvc-marble'].includes(own)
+        ? 'accessories'
+        : (requested || own)
       ;(byCat[cat] ??= []).push({ ...d, categoryId: cat })
     }
     const plans = {}
