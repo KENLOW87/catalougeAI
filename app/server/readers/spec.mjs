@@ -168,15 +168,41 @@ export function findBlockAnchors(page, anchor) {
     return total > 0 && hit / total >= 0.5
   }
 
-  // A GENUINE block is always kept as itself, at its OWN measured size — including
-  // one wider than the ordinary pitch. `maxWidthFrac` and `minFill` already ruled
-  // out page furniture above, so a block that reaches here really is a product; a
-  // "hero" card spanning two columns (page 3's PW07, PS FLAT BAR) is one product,
-  // not a slice of one. Earlier this synthesised a STANDARD-size cell for every grid
-  // position instead, which truncated a wide block to one column's width and then,
-  // because nothing stopped the projection from landing a SECOND cell on the same
-  // block's leftover ink, duplicated it — the real product beside it went unfound.
-  const found = blocks.map(b => ({ x: b.minX, y: b.minY, w: b.w, h: b.h }))
+  // A GENUINE block is normally kept as itself, at its OWN measured size. There is
+  // one important exception: neighbouring ordinary cards can touch through their
+  // shadows/anti-aliased edges and arrive as ONE connected component. That was the
+  // cause of PVC Marble Sheet page 5 importing PV24+PV25 as one product. A real hero
+  // card (PS FLAT BAR, for example) is still preserved when it is the only wide block
+  // in its row; a wide component is split only when the same row also contains a
+  // normal-pitch card and the projected cells are visibly occupied.
+  //
+  // This is deliberately part of the shared block detector, not a PVC-specific
+  // crop. Every photo-grid catalogue benefits from the same one-photo/one-product
+  // guarantee, including future uploads whose filenames and catalogue family are
+  // unknown.
+  const splitWideBlocks = anchor.splitWideBlocks !== false
+  const narrowLimit = mw * 1.35
+  const rowTolerance = mh * 0.5
+  const canBeMergedNeighbours = b => {
+    if (!splitWideBlocks || b.w <= mw * 1.55) return false
+    const peers = blocks.filter(other => other !== b &&
+      Math.abs(other.minY - b.minY) <= rowTolerance && other.w <= narrowLimit)
+    if (!peers.length) return false
+
+    const cells = cols
+      .filter(x => x >= b.minX - mw * 0.35 && x + mw <= b.minX + b.w + mw * 0.35)
+      .map(x => ({ x, y: b.minY, w: mw, h: b.h }))
+      .filter(cell => occupied(cell.x, cell.y))
+
+    return cells.length >= 2 ? cells : null
+  }
+
+  const found = []
+  for (const block of blocks) {
+    const split = canBeMergedNeighbours(block)
+    if (split) found.push(...split)
+    else found.push({ x: block.minX, y: block.minY, w: block.w, h: block.h })
+  }
 
   // A projected grid cell only gets to synthesise a cell when NO real block already
   // covers that position — checked by its centre, the same test `unique` uses below.
@@ -574,7 +600,8 @@ export async function readWithSpec(page, spec) {
       __sourceAnchor:{x:a.x/page.width,y:a.y/page.height},
       ...(kind.layoutPairGroup?{layoutPairGroup:kind.layoutPairGroup}:{}),
       ...(kind.layoutFullRow?{layoutFullRow:true}:{}),
-      ...(kind.layoutRowGroup?{layoutRowGroup:kind.layoutRowGroup}:{}) }
+      ...(kind.layoutRowGroup?{layoutRowGroup:kind.layoutRowGroup}:{}),
+      ...(kind.sourceLayout?{sourceLayout:kind.sourceLayout}:{}) }
     const attemptWarnings = []
     for (const f of kind.fields) {
       // A block anchor IS the product photo, so that field needs no box at all.

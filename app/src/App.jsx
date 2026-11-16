@@ -331,14 +331,15 @@ export default function App() {
 
   // Wipe every catalogue in this browser and start clean — e.g. before demoing
   // to a new company, so nothing from a previous session is still on screen.
-  // Unlike `removeCategory`, nothing is marked deleted: every category stays
-  // visible, just empty, ready for a fresh upload.
+  // A true reset is visually blank: category definitions remain in the code so
+  // routing/layout/reference rules are not lost, but no empty category cards are
+  // shown until a new import revives a recognised family.
   const resetDemo = async () => {
     if (!confirm(
       'Reset ALL catalogues for a new demo?\n\n' +
       'This clears every product, photo, drawing, imported header and quality-check ' +
       'answer in EVERY catalogue in this browser — including any catalogue created ' +
-      'from an import. Categories themselves stay, empty, ready for a fresh upload. ' +
+      'from an import. The dashboard stays blank, ready for a fresh upload. ' +
       'This cannot be undone.'
     )) return
     setBusy('Resetting…')
@@ -349,13 +350,17 @@ export default function App() {
       // explicit empty record is what suppresses that fallback, the same way
       // `removeCatalogue` already does for a single category.
       const catalogueIds = [...new Set([...CATEGORY_IDS, ...PARENTS.filter(p => p.children.length === 0).map(p => p.id)])]
-      await Promise.all(catalogueIds.map(id => saveCatalogue(id, [])))
+      const hidden = Object.fromEntries(catalogueIds.map(id => [id, true]))
+      await Promise.all([
+        ...catalogueIds.map(id => saveCatalogue(id, [])),
+        ...catalogueIds.map(id => markCategoryDeleted(id)),
+      ])
       const blank = {}
       for (const id of catalogueIds) blank[id] = []
       setByCategory(blank)
       setChromeByCategory({})
       setAcceptedByCategory({})
-      setDeletedCategories({})
+      setDeletedCategories(hidden)
       setCustomCategories({})
       setShowDashboard(true)
       setSidebarOpen(false)

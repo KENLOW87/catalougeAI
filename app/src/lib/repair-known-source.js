@@ -5,12 +5,18 @@ import { PVC_SEED } from './categories/pvc.js'
 // Repair only that unmistakable legacy signature: never resurrect a product from
 // an arbitrary catalogue or overwrite an existing edited record.
 export function repairLegacyAccessoriesProducts(categoryId, products) {
-  if (categoryId !== 'accessories' || !Array.isArray(products)) return products
+  if (!Array.isArray(products)) return products
+  if (categoryId === 'carbon-crystal-wall') return repairCarbonCrystalProfileRows(products)
+  if (categoryId !== 'accessories') return products
   products = repairPvcMeasurementDrawings(products)
   products = splitMarch2026EndBendProducts(products)
   products = repairMarch2026Variations(products)
   products = repairMarch2026FlatBarDrawings(products)
   products = repairMarch2026Page9Profiles(products)
+  products = repairMarch2026Page10Assets(products)
+  products = repairMarch2026LedRows(products)
+  products = repairMarch2026Page3Profiles(products)
+  products = repairMarch2026Page11And12Assets(products)
   const names = new Set(products.map(p => String(p?.name ?? '').trim().toLowerCase()))
   if (names.has('led - 508') || names.has('led-508')) return products
   const signature = ['led -160', 'led -170', 'led -195', 'led -15', 'corner led 601', 'led - 08']
@@ -29,6 +35,187 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
     sourcePreserved: true,
   }
   return [...products.slice(0, before), restored, ...products.slice(before)]
+}
+
+// Carbon Crystal's edge-profile source sheet is one page containing three
+// different products (I, END and CORNER). A legacy import treated the first row
+// as the final ordinary card on the preceding page and left the source strips as
+// whole-row photo/drawing crops. Repair the exact three-row signature in place:
+// stable IDs remain untouched, source scenes become display examples, and only
+// the finish strips / dimension drawings are used as product media.
+function repairCarbonCrystalProfileRows(products) {
+  const names = products.map(product => normal(product?.name))
+  const start = names.findIndex((name, index) =>
+    name === 'i profile' && names[index + 1] === 'end profile' && names[index + 2] === 'corner profile' &&
+    products.slice(index, index + 3).every(product => /carbon\s+crystal/i.test(`${product?.third ?? ''} ${product?.subtitle ?? ''}`)))
+  if (start < 0) return products
+
+  const version = '2026-11-16-carbon-edge-profile-page9'
+  const rows = [
+    ['i-profile', 'I Profile'],
+    ['end-profile', 'END Profile'],
+    ['corner-profile', 'CORNER Profile'],
+  ]
+  let changed = false
+  const repaired = products.slice()
+  rows.forEach(([key, name], offset) => {
+    const current = products[start + offset]
+    const base = `/assets/source/carbon-crystal-wall/page9-${key}`
+    const photo = `${base}-photo.png?v=${version}`
+    const drawing = `${base}-drawing.png?v=${version}`
+    const display = `${base}-display.png?v=${version}`
+    const next = {
+      ...current,
+      name,
+      photo,
+      photoOriginal: current.photoOriginal ?? current.photo,
+      sourcePhotoBackup: current.sourcePhotoBackup ?? current.photo,
+      drawing,
+      drawingOriginal: current.drawingOriginal ?? current.drawing,
+      sourceDrawingBackup: current.sourceDrawingBackup ?? current.drawing,
+      examples: [{ image: display, caption: '', role: 'usage' }],
+      examplesTrusted: true,
+      sourceExamplesBackup: current.sourceExamplesBackup ?? current.examples ?? [],
+      sourceLayout: 'carbon-edge-profile',
+      sourcePreserved: true,
+      readBy: 'rules',
+    }
+    if (JSON.stringify(next) !== JSON.stringify(current)) changed = true
+    repaired[start + offset] = next
+  })
+  return changed ? repaired : products
+}
+
+// The saved March import once shifted the LED rows: "Led -160 New" replaced
+// the source's Led -15 card and every following card moved up. This is a very
+// specific seven-row source signature, so repair the records in place (keeping
+// their stable IDs) instead of inserting/deleting arbitrary products.
+function repairMarch2026LedRows(products) {
+  const first = products.slice(0, 7)
+  const actual = first.map(product => normal(product?.name))
+  const broken = ['led -160', 'led - 160 new', 'led -170', 'led -195', 'led - 508', 'corner led 601', 'led - 08']
+  if (first.length !== 7 || !broken.every((name, index) => actual[index] === name)) return products
+  let changed = false
+  const repaired = products.map((product, index) => {
+    if (index >= 7) return product
+    const source = SEED[index]
+    if (!source) return product
+    const next = {
+      ...product,
+      ...source,
+      id: product.id,
+      categoryId: 'accessories',
+      sourcePage: 1,
+      readBy: 'rules',
+      sourcePreserved: true,
+    }
+    if (product.photo && product.photo !== source.photo) {
+      next.photoOriginal = product.photoOriginal ?? product.photo
+      next.sourcePhotoBackup = product.sourcePhotoBackup ?? product.photo
+    }
+    if (product.drawing && product.drawing !== source.drawing) {
+      next.drawingOriginal = product.drawingOriginal ?? product.drawing
+      next.sourceDrawingBackup = product.sourceDrawingBackup ?? product.drawing
+    }
+    if (JSON.stringify(next) !== JSON.stringify(product)) changed = true
+    return next
+  })
+  return changed ? repaired : products
+}
+
+// Page 3 is CORNER, L (15mm/20mm white exceptions), L. A legacy saved import
+// had three L rows, so the first product silently borrowed the wrong photos.
+// Match only the complete page-3 run and restore the reviewed PVC source data.
+function repairMarch2026Page3Profiles(products) {
+  let indexes = products.map((product, index) => Number(product?.sourcePage) === 3 ? index : -1).filter(index => index >= 0)
+  const indexedNames = indexes.map(index => normal(products[index]?.name))
+  // Some legacy records lost sourcePage during the earlier category merge. The
+  // surrounding March source sequence is still unambiguous: page 2 is H/T/END/W,
+  // page 3 is the next three rows, and page 4 starts with I Profile.
+  if ((indexes.length !== 3 || !(indexedNames.every(name => name === 'l profile') || (indexedNames[0] === 'corner profile' && indexedNames.slice(1).every(name => name === 'l profile')))) && products.length >= 15 &&
+      ['h profile', 't profile', 'end profile', 'w profile'].every((name, i) => normal(products[7 + i]?.name) === name) &&
+      normal(products[14]?.name) === 'i profile') indexes = [11, 12, 13]
+  if (indexes.length !== 3) return products
+  const current = indexes.map(index => products[index])
+  const names = current.map(product => normal(product?.name))
+  if (!(names.every(name => name === 'l profile') || (names[0] === 'corner profile' && names.slice(1).every(name => name === 'l profile')))) return products
+  const sources = PVC_SEED.slice(4, 7)
+  let changed = false
+  const repaired = products.slice()
+  indexes.forEach((index, offset) => {
+    const product = products[index]
+    const source = sources[offset]
+    if (!source) return
+    const next = {
+      ...product,
+      name: source.name,
+      productShape: 'generic',
+      size: source.size,
+      subtitle: `Size : ${source.size}`,
+      third: source.series,
+      variants: source.variants,
+      exceptions: source.exceptions,
+      extra: source.extra,
+      drawing: source.drawing,
+      sourcePage: 3,
+      readBy: 'rules',
+      sourcePreserved: true,
+    }
+    if (product.drawing && product.drawing !== source.drawing) {
+      next.drawingOriginal = product.drawingOriginal ?? product.drawing
+      next.sourceDrawingBackup = product.sourceDrawingBackup ?? product.drawing
+    }
+    if (JSON.stringify(next) !== JSON.stringify(product)) changed = true
+    repaired[index] = next
+  })
+  return changed ? repaired : products
+}
+
+// Page 11/12 previously inherited whole-row crops and narrow drawing boxes.
+// These assets are source-specific and are safe to restore by printed page and
+// dimensions; unrelated catalogues never enter this repair path.
+function repairMarch2026Page11And12Assets(products) {
+  const version = '2026-11-16-final-source-assets'
+  let changed = false
+  const repaired = products.map(product => {
+    const page = Number(product?.sourcePage)
+    const name = normal(product?.name)
+    const subtitle = String(product?.subtitle ?? '')
+    let key = null
+    if (page === 7 && name === 't micro-seam aluminium black') key = 'page7-t-micro-seam'
+    if (page === 7 && name === 'h micro-seam aluminium silver') key = 'page7-h-micro-seam'
+    if (page === 11 && name === 'u channel profile (b)' && /20\s*mm\s*x\s*3000/i.test(subtitle)) key = 'page11-u-channel-20mm'
+    if (page === 11 && name === 'u channel profile (b)' && /10\s*mm\s*x\s*3000/i.test(subtitle)) key = 'page11-u-channel-10mm'
+    if (page === 11 && name === 'wing flat bar') key = 'page11-wing-flat-bar'
+    if (page === 12 && name === 'brass flat bar - bfb 01') key = 'page12-bfb-01'
+    if (page === 12 && name === 'brass flat bar - bfb 02') key = 'page12-bfb-02'
+    if (page === 12 && name === 'brass flat bar - bfb 03') key = 'page12-bfb-03'
+    if (!key) return product
+    const photo = `/assets/source/accessories-march-2026/${key}-photo.png?v=${version}`
+    const drawing = `/assets/source/accessories-march-2026/${key}-drawing.png?v=${version}`
+    const display = key === 'page7-t-micro-seam'
+      ? `/assets/source/accessories-march-2026/page7-t-micro-seam-display.png?v=${version}`
+      : null
+    const examplesOk = !display || (product.examples?.length === 1 && product.examples[0]?.image === display)
+    if (product.photo === photo && product.drawing === drawing && examplesOk) return product
+    changed = true
+    const next = {
+      ...product,
+      photo,
+      photoOriginal: product.photoOriginal ?? product.photo,
+      sourcePhotoBackup: product.sourcePhotoBackup ?? product.photo,
+      drawing,
+      drawingOriginal: product.drawingOriginal ?? product.drawing,
+      sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+      sourcePreserved: true,
+    }
+    if (display && !examplesOk) {
+      next.sourceExamplesBackup = product.sourceExamplesBackup ?? product.examples ?? []
+      next.examples = [{ image: display, caption: 'Pemasangan T Micro-Seam', role: 'usage' }]
+    }
+    return next
+  })
+  return changed ? repaired : products
 }
 
 // The source PDF prints two separate Aluminum End Bend product cards on page 6:
@@ -132,9 +319,40 @@ function repairMarch2026Page9Profiles(products) {
     if (name === 'u channel profile' && /10\s*mm\s*x\s*3000/i.test(size)) key = 'u-channel-10mm'
     if (name === 'u channel profile' && /20\s*mm\s*x\s*3000/i.test(size)) key = 'u-channel-20mm'
     if (!key) return product
-    const photo = `/assets/source/accessories-march-2026/page9-${key}-photo.png?v=2026-11-03-page9-source-rows`
-    const drawing = `/assets/source/accessories-march-2026/page9-${key}-drawing.png?v=2026-11-03-page9-measurements`
-    if (product.photo === photo && product.drawing === drawing) return product
+    const photo = `/assets/source/accessories-march-2026/page9-${key}-photo.png?v=2026-11-16-final-source-assets`
+    const drawing = `/assets/source/accessories-march-2026/page9-${key}-drawing.png?v=2026-11-16-final-source-assets`
+    const display = `/assets/source/accessories-march-2026/page9-${key}-display.png?v=2026-11-16-final-source-assets`
+    const examplesOk = product.examples?.length === 1 && product.examples[0]?.image === display
+    if (product.photo === photo && product.drawing === drawing && examplesOk) return product
+    changed = true
+    const next = {
+      ...product,
+      photo,
+      photoOriginal: product.photoOriginal ?? product.photo,
+      sourcePhotoBackup: product.sourcePhotoBackup ?? product.photo,
+      drawing,
+      drawingOriginal: product.drawingOriginal ?? product.drawing,
+      sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+    }
+    if (!examplesOk) {
+      next.sourceExamplesBackup = product.sourceExamplesBackup ?? product.examples ?? []
+      next.examples = [{ image: display, caption: `Gambar tambahan ${product.name || 'profile'}`, role: 'usage' }]
+    }
+    return next
+  })
+  return changed ? repaired : products
+}
+
+function repairMarch2026Page10Assets(products) {
+  const version = '2026-11-16-final-source-assets'
+  let changed = false
+  const repaired = products.map(product => {
+    if (Number(product?.sourcePage) !== 10 || normal(product?.name) !== 'l profile' || !/25\s*mm\s*x\s*3000/i.test(String(product?.subtitle ?? ''))) return product
+    const photo = `/assets/source/accessories-march-2026/page10-l-profile-25mm-photo.png?v=${version}`
+    const drawing = `/assets/source/accessories-march-2026/page10-l-profile-25mm-drawing.png?v=${version}`
+    const display = `/assets/source/accessories-march-2026/page10-l-profile-25mm-display.png?v=${version}`
+    const examplesOk = product.examples?.length === 1 && product.examples[0]?.image === display
+    if (product.photo === photo && product.drawing === drawing && examplesOk) return product
     changed = true
     return {
       ...product,
@@ -144,6 +362,9 @@ function repairMarch2026Page9Profiles(products) {
       drawing,
       drawingOriginal: product.drawingOriginal ?? product.drawing,
       sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
+      sourceExamplesBackup: examplesOk ? product.sourceExamplesBackup : (product.sourceExamplesBackup ?? product.examples ?? []),
+      examples: examplesOk ? product.examples : [{ image: display, caption: 'Gambar tambahan L Profile 25mm', role: 'usage' }],
+      sourcePreserved: true,
     }
   })
   return changed ? repaired : products

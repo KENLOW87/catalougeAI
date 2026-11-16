@@ -154,7 +154,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
       <div className="dashboard-danger">
         <div>
           <h2>Danger zone</h2>
-          <p>Clears every catalogue in this browser — products, photos, drawings, imported headers and quality-check answers — so it is ready to demo to a different company. Categories stay, empty.</p>
+              <p>Clears every catalogue in this browser — products, photos, drawings, imported headers and quality-check answers — so it is ready to demo to a different company. The dashboard stays blank until a fresh upload revives a recognised catalogue family.</p>
         </div>
         <button className="danger" onClick={() => onResetAll?.()}>Reset all catalogues</button>
       </div>

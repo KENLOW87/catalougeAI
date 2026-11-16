@@ -5,12 +5,17 @@ function containsCode(text,code){
  if(normalize(text).includes(normalize(code)))return true
  const expected=normalize(code).match(/^([A-Z]+)(\d+)([A-Z]?)$/)
  if(!expected)return normalize(text).includes(normalize(code))
- return (String(text).toUpperCase().match(/[A-Z][A-Z0-9-]{1,15}/g)||[]).some(token=>{
-  const clean=normalize(token)
+ return (String(text).toUpperCase().match(/[A-Z0-9][A-Z0-9-]{1,15}/g)||[]).some(token=>{
+  let clean=normalize(token)
+  // OCR often reads the capital I at the start of ICP01 as the digit 1.
+  if(clean.startsWith('1')&&expected[1].startsWith('I'))clean=`I${clean.slice(1)}`
   if(!clean.startsWith(expected[1]))return false
   const tail=clean.slice(expected[1].length)
-  const digits=tail.replace(/[OQ]/g,'0').replace(/[IL]/g,'1').replace(/S/g,'5')
-  return /^\d+$/.test(digits)&&Number(digits)===Number(expected[2])
+  const suffix=expected[3]||''
+  const candidateSuffix=suffix?tail.slice(-1):''
+  const digitPart=suffix?tail.slice(0,-1):tail
+  const digits=digitPart.replace(/[OQ]/g,'0').replace(/[ILT]/g,'1').replace(/S/g,'5')
+  return /^\d+$/.test(digits)&&Number(digits)===Number(expected[2])&&(!suffix||candidateSuffix===suffix)
  })
 }
 // Page numbers alone are never evidence of a source layout. Confirm printed

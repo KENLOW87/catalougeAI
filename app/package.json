@@ -17,6 +17,8 @@
     "test:ingest-free": "node server/test-ingest-free.mjs",
     "test:readers": "node server/test-rules-reader.mjs",
     "test:spec": "node server/test-spec-engine.mjs",
+    "test:block-anchors": "node server/test-block-anchor-splitting.mjs",
+    "test:light-stone": "node server/test-light-stone-source.mjs",
     "test:reconcile": "node server/test-reconcile.mjs",
     "test:reimport": "node server/e2e-reimport.mjs",
     "test:export-all": "node server/test-export-all.mjs",

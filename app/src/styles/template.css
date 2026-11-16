@@ -244,6 +244,7 @@
 .dp-item--source-pair .dp-visuals--paired { grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr); }
 .dp-item--source-pair .dp-drawing-frame { grid-column: 1; grid-row: 1; }
 .dp-item--source-pair .dp-photo { grid-column: 2; grid-row: 1; }
+.dp-item[data-source-page="7"].dp-item--source-pair .dp-photo img { max-height: 50mm; }
 .dp-visuals--variants { grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); }
 .dp-visuals--stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: 34mm 24mm; align-content: center; }
 .dp-visuals--stacked .dp-photo, .dp-visuals--stacked .dp-drawing-frame { border: 0; padding: 0; }
@@ -301,9 +302,9 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
    the product photo's frame. */
 .dp-item--display-examples-with-drawing { grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr) minmax(0, 1fr); }
 .dp-item--display-examples-with-drawing > .dp-visuals { display: contents; padding: 0; }
-.dp-item--display-examples-with-drawing > .dp-photo { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; }
-.dp-item--display-examples-with-drawing > .dp-drawing-frame { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
-.dp-item--display-examples-with-drawing > .dp-examples { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing .dp-photo { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing .dp-drawing-frame { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--display-examples-with-drawing .dp-examples { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; }
 .dp-item--display-examples-with-drawing > .dp-name { grid-column: 1 / -1; grid-row: 2; }
 .dp-item--display-examples-with-drawing > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
 /* Reserve the same heading/caption space on both sides so photos line up,
@@ -323,11 +324,82 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
    above, whose two-column defaults intentionally remain for products without
    a technical drawing. */
 .dp-item--display-examples-with-drawing > .dp-visuals { display: contents; grid-column: auto; grid-row: auto; padding: 0; }
-.dp-item--display-examples-with-drawing > .dp-photo { grid-column: 1; grid-row: 1; }
-.dp-item--display-examples-with-drawing > .dp-drawing-frame { grid-column: 2; grid-row: 1; }
-.dp-item--display-examples-with-drawing > .dp-examples { grid-column: 3; grid-row: 1; }
+.dp-item--display-examples-with-drawing .dp-photo { grid-column: 1; grid-row: 1; }
+.dp-item--display-examples-with-drawing .dp-drawing-frame { grid-column: 2; grid-row: 1; }
+.dp-item--display-examples-with-drawing .dp-examples { grid-column: 3; grid-row: 1; }
 .dp-item--display-examples-with-drawing > .dp-name { grid-column: 1 / -1; grid-row: 2; }
 .dp-item--display-examples-with-drawing > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
+/* Accessories source page 9 is a three-column source row: the reference
+   pieces sit left, the measurement drawing is centred, and the finish strip is
+   right. Keep the source relationship instead of the generic product/drawing/
+   display order. */
+.dp-item--source-triple { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr); grid-template-rows: minmax(0, 1fr) auto auto; column-gap: 2mm; }
+.dp-item--source-triple > .dp-visuals { display: contents; }
+.dp-item--source-triple .dp-examples { grid-column: 1; grid-row: 1; margin: 0; min-width: 0; min-height: 0; }
+.dp-item--source-triple .dp-drawing-frame { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--source-triple .dp-photo { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--source-triple > .dp-name { grid-column: 1 / -1; grid-row: 2; }
+.dp-item--source-triple > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
+.dp-item--source-triple .dp-examples { display: grid; grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-triple .dp-examples-title { display: none; }
+.dp-item--source-triple .dp-examples-grid { height: 100%; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.dp-item--source-triple .dp-examples-grid figure { grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-triple .dp-examples-grid img { width: 100%; height: 100%; }
+
+/* Page 10's 25mm row has the source drawing and its small reference pieces on
+   the left, with the product finish strip on the right. */
+.dp-item--source-example-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); grid-template-rows: minmax(0, 1fr) 30mm auto auto; column-gap: 2mm; }
+.dp-item--source-example-pair > .dp-visuals { display: contents; }
+.dp-item--source-example-pair .dp-photo { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--source-example-pair .dp-drawing-frame { grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; }
+.dp-item--source-example-pair .dp-examples { grid-column: 1; grid-row: 2; margin: 0; min-width: 0; min-height: 0; }
+.dp-item--source-example-pair > .dp-name { grid-column: 1 / -1; grid-row: 3; }
+.dp-item--source-example-pair > .dp-sub { grid-column: 1 / -1; grid-row: 4; }
+.dp-item--source-example-pair .dp-examples { display: grid; grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-example-pair .dp-examples-title { display: none; }
+.dp-item--source-example-pair .dp-examples-grid { min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.dp-item--source-example-pair .dp-examples-grid figure { grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-example-pair .dp-examples-grid img { width: 100%; height: 100%; }
+
+/* Page 7 places the T drawing on the left and its installation/photo pair in
+   two stacked right-hand panels. The H row remains a normal source pair. */
+.dp-item--source-stacked-display { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto auto; column-gap: 2mm; }
+.dp-item--source-stacked-display > .dp-visuals { display: contents; }
+.dp-item--source-stacked-display .dp-drawing-frame { grid-column: 1; grid-row: 1 / 3; min-width: 0; min-height: 0; }
+.dp-item--source-stacked-display .dp-examples { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; min-height: 0; }
+.dp-item--source-stacked-display .dp-photo { grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; }
+.dp-item--source-stacked-display > .dp-name { grid-column: 1 / -1; grid-row: 3; }
+.dp-item--source-stacked-display > .dp-sub { grid-column: 1 / -1; grid-row: 4; }
+.dp-item--source-stacked-display .dp-examples { display: grid; grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-stacked-display .dp-examples-title { display: none; }
+.dp-item--source-stacked-display .dp-examples-grid { height: 100%; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.dp-item--source-stacked-display .dp-examples-grid figure { grid-template-rows: minmax(0, 1fr); }
+.dp-item--source-stacked-display .dp-examples-grid img { width: 100%; height: 100%; }
+
+/* Carbon Crystal page 9 has three source roles in the same printed row:
+   installation scene, dimension drawing and finish strips. I Profile uses all
+   three side-by-side; END/CORNER use the scene on the left and stack the
+   product/drawing on the right. */
+.dp-item--carbon-profile-edge { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; column-gap: 2mm; }
+.dp-item--carbon-profile-edge > .dp-visuals { display: contents; }
+.dp-item--carbon-profile-edge .dp-examples { margin: 0; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.dp-item--carbon-profile-edge .dp-examples-title { display: none; }
+.dp-item--carbon-profile-edge .dp-examples-grid { height: 100%; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.dp-item--carbon-profile-edge .dp-examples-grid figure { grid-template-rows: minmax(0, 1fr); }
+.dp-item--carbon-profile-edge .dp-examples-grid img,
+.dp-item--carbon-profile-edge .dp-photo img { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
+.dp-item--carbon-profile-i { grid-template-columns: minmax(0, 1.45fr) minmax(0, .8fr) minmax(0, .95fr); }
+.dp-item--carbon-profile-i .dp-examples { grid-column: 1; grid-row: 1; }
+.dp-item--carbon-profile-i .dp-drawing-frame { grid-column: 2; grid-row: 1; }
+.dp-item--carbon-profile-i .dp-photo { grid-column: 3; grid-row: 1; }
+.dp-item--carbon-profile-i > .dp-name { grid-column: 1 / -1; grid-row: 2; }
+.dp-item--carbon-profile-i > .dp-sub { grid-column: 1 / -1; grid-row: 3; }
+.dp-item--carbon-profile-two-pane { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(0, .8fr) auto auto; }
+.dp-item--carbon-profile-two-pane .dp-examples { grid-column: 1; grid-row: 1 / 3; }
+.dp-item--carbon-profile-two-pane .dp-photo { grid-column: 2; grid-row: 1; }
+.dp-item--carbon-profile-two-pane .dp-drawing-frame { grid-column: 2; grid-row: 2; }
+.dp-item--carbon-profile-two-pane > .dp-name { grid-column: 1 / -1; grid-row: 3; }
+.dp-item--carbon-profile-two-pane > .dp-sub { grid-column: 1 / -1; grid-row: 4; }
 .dp-missing { font-size: 3mm; color: #b07711; }
 
 .dp-name { text-align: center; font-size: 4.6mm; line-height: 5.4mm; font-weight: 800;
@@ -339,7 +411,6 @@ img.photo-contrast-dark { background: #3b4149; border-radius: 1.2mm; }
    Product rows, card bounds, source images and pagination remain unchanged. */
 .dp-item--technical-pair .dp-visuals--paired { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
 .dp-item--technical-pair .dp-photo img { max-height: 55mm; }
-.dp-row--single .dp-item--technical-pair .dp-photo img { max-height: 85mm; }
 
 /* Source-declared card rows retain all four products above one shared support
    band. A support photograph must never promote a card into a full-width row. */

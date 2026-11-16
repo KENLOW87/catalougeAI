@@ -43,7 +43,9 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
     return () => {active=false}
   }, [checkKey,p.examples,p.extra,p.extraRole,supplementaryInBand,tiledDisplays.join('|')])
   const checked = checkedExamples?.key === checkKey && checkedExamples?.source === p.examples && checkedExamples?.extra === p.extra
-  const examples = checked ? checkedExamples.examples : candidates.filter(example => !isDimensionReference(example))
+  const examples = p.examplesTrusted
+    ? candidates.filter(example => !isDimensionReference(example))
+    : (checked ? checkedExamples.examples : candidates.filter(example => !isDimensionReference(example)))
   const variants = (p.finishes ?? p.variants ?? []).filter(v => v?.photo)
   const technicalVariants = p.variantTechnical ? variants : []
   const sideBySide = examplesBesideProduct(examples)
@@ -54,7 +56,13 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
   // into a tiny third column or push it below the product.
   const displayWithDrawing = showDrawing && sideBySide && !technicalVariants.length
   const technicalPair = p.layoutPairGroup === 'aluminium-corners' && showDrawing && !examples.length
-  const sourcePair = p.readBy === 'rules' && p.sourcePage === 8 && showDrawing && !examples.length
+  const sourcePair = p.readBy === 'rules' && p.categoryId === 'accessories' && [7, 8, 10, 11, 12].includes(Number(p.sourcePage)) && showDrawing && !examples.length
+  const sourceTriple = p.categoryId === 'accessories' && Number(p.sourcePage) === 9 && showDrawing && examples.length > 0
+  const sourceExamplePair = p.categoryId === 'accessories' && Number(p.sourcePage) === 10 && showDrawing && examples.length > 0
+  const sourceStackedDisplay = p.categoryId === 'accessories' && Number(p.sourcePage) === 7 && showDrawing && examples.length > 0
+  const carbonProfile = p.sourceLayout === 'carbon-edge-profile' && showDrawing && examples.length > 0
+  const carbonProfileI = carbonProfile && /^i\s+profile$/i.test(p.name || '')
+  const carbonProfileTwoPane = carbonProfile && !carbonProfileI
   const sourceRow = p.categoryId === 'pvc-foam-board' && p.sourcePage === 2
   const exampleColumns = Math.min(sideBySide ? 2 : 4, examples.length)
   const info = <>
@@ -64,7 +72,7 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
     )}
   </>
   return (
-    <div className={`dp-item ${examples.length ? 'dp-item--examples' : ''} ${sideBySide ? 'dp-item--display-examples' : ''} ${displayWithDrawing ? 'dp-item--display-examples-with-drawing' : ''} ${technicalPair ? 'dp-item--technical-pair' : ''} ${sourcePair ? 'dp-item--source-pair' : ''} ${sourceRow ? 'dp-item--source-row' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined}
+    <div className={`dp-item ${examples.length ? 'dp-item--examples' : ''} ${sideBySide ? 'dp-item--display-examples' : ''} ${displayWithDrawing ? 'dp-item--display-examples-with-drawing' : ''} ${technicalPair ? 'dp-item--technical-pair' : ''} ${sourcePair ? 'dp-item--source-pair' : ''} ${sourceTriple ? 'dp-item--source-triple' : ''} ${sourceExamplePair ? 'dp-item--source-example-pair' : ''} ${sourceStackedDisplay ? 'dp-item--source-stacked-display' : ''} ${carbonProfile ? 'dp-item--carbon-profile-edge' : ''} ${carbonProfileI ? 'dp-item--carbon-profile-i' : ''} ${carbonProfileTwoPane ? 'dp-item--carbon-profile-two-pane' : ''} ${sourceRow ? 'dp-item--source-row' : ''} ${editable && highlighted ? 'cell--highlighted' : ''}`} id={editable ? `product-${p.id}` : undefined} data-source-page={p.sourcePage ?? undefined}
          data-examples-pending={!checked && candidates.length ? 'true' : undefined}
          style={examples.length ? { '--example-image-size': examples.length > 4 ? '22mm' : '32mm' } : undefined}>
       <Badge n={p.slot} variant="default" />

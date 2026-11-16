@@ -115,7 +115,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       // return one technical-variant record with two finishes. If we repair
       // only on load, re-import review still shows the stale merged draft as a
       // position-matched conflict.
-      const repaired = cat === 'accessories'
+      const repaired = ['accessories', 'carbon-crystal-wall'].includes(cat)
         ? repairLegacyAccessoriesProducts(cat, list)
         : list
       plans[cat] = reconcile(existingByCategory?.[cat] ?? [], repaired)
@@ -472,28 +472,12 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
           <>
             <h2>Add products from a PDF or image</h2>
             <p className="lede">
-              Upload a catalogue PDF or one product image. The system identifies the likely
-              catalogue, reads what it can locally, and shows you the result first.
-              <b> Nothing is added until you approve it.</b>
+              Upload a catalogue PDF or a product photo. We'll read it and show you
+              what was found. <b>Nothing is added until you approve it.</b>
             </p>
-            <p className="lede">
-              Pages in a layout the system already knows are read <b>on this machine, for free</b>.
-              Only an unfamiliar layout is sent to the AI reader, which needs an API key.
-            </p>
-            {status?.localReaders?.length > 0 && (
-              <p className="lede">
-                Known layouts: {status.localReaders.map((t, i) => (
-                  <React.Fragment key={t}>
-                    {i > 0 && ', '}
-                    <b>{t}</b>
-                  </React.Fragment>
-                ))}.
-              </p>
-            )}
             {status && !status.aiFallback && (
               <p className="warn">
-                No <code>ANTHROPIC_API_KEY</code> is set, so a catalogue in any other layout
-                cannot be read yet. Known layouts are unaffected.
+                Some files can't be read yet. If this one fails, let an admin know.
               </p>
             )}
             <input ref={fileRef} type="file" accept="application/pdf,image/*" hidden onChange={start} />

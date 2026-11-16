@@ -110,6 +110,61 @@ export function defaultCategoryFor(parent, chrome = null) {
           pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, rowHeights: sourceRowHeights, rowGap: sourceGap, columns: 1, sourcePage })
           continue
         }
+        // Light Stone's source pages are two-up product sheets. Keep the four
+        // cards from pages 2-3 in two rows of two, and keep the single product
+        // plus its installation strip together on pages 4-5. The cover is an
+        // isPage plate and is handled above, so the source order remains 1-5.
+        if (product.categoryId === 'light-stone-wall' && Number.isInteger(product.sourcePage)) {
+          const sourcePage = product.sourcePage
+          const sourceProducts = [product]
+          while (itemIndex + 1 < items.length) {
+            const next = items[itemIndex + 1]
+            if (!next || next.isPage || next.categoryId !== 'light-stone-wall' || next.sourcePage !== sourcePage) break
+            sourceProducts.push({ ...next, slot: ++slot })
+            itemIndex++
+          }
+          flushPage()
+          if (sourcePage === 2 || sourcePage === 3) {
+            const sourceRows = []
+            for (let i = 0; i < sourceProducts.length; i += 2) sourceRows.push(sourceProducts.slice(i, i + 2))
+            pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: 120,
+              rowHeights: sourceRows.map(() => 120), rowGap: 4, columns: 2, sourcePage })
+          } else {
+            const sourceRows = [sourceProducts]
+            const support = sourceProducts.some(p => p.supportStrip)
+            if (support) { const band = []; band.supportFor = sourceProducts; sourceRows.push(band) }
+            pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: 125,
+              rowHeights: support ? [125, 112] : [125], rowGap: 3, columns: 2, sourcePage })
+          }
+          continue
+        }
+        // Carbon Crystal's edge-profile sheet is one source page with three
+        // stacked products. Keep I/END/CORNER together; treating them as
+        // ordinary cards lets I Profile spill onto the preceding finish grid.
+        if (product.categoryId === 'carbon-crystal-wall' && product.sourceLayout === 'carbon-edge-profile') {
+          const sourceProducts = [product]
+          while (itemIndex + 1 < items.length) {
+            const next = items[itemIndex + 1]
+            if (!next || next.isPage || next.categoryId !== 'carbon-crystal-wall' || next.sourceLayout !== 'carbon-edge-profile') break
+            sourceProducts.push({ ...next, slot: ++slot })
+            itemIndex++
+          }
+          flushPage()
+          const sourceGap = 3
+          const available = PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceProducts.length - 1)
+          const rowH = Math.floor(available / sourceProducts.length)
+          pages.push({
+            index: pages.length + 1,
+            rows: sourceProducts.map(p => [p]),
+            blocks: [],
+            rowH,
+            rowHeights: sourceProducts.map(() => rowH),
+            rowGap: sourceGap,
+            columns: 1,
+            sourcePage: product.sourcePage,
+          })
+          continue
+        }
         // Recognised Accessories pages are already paginated by the source PDF.
         // Keep each source page together and size its rows to the number of
         // printed products instead of letting the generic drawing rule turn it
@@ -153,7 +208,7 @@ export function defaultCategoryFor(parent, chrome = null) {
           const sourceRowHeights = sourcePage === 1 ? [94, 102]
             : sourcePage === 6 && sourceRows.length === 3 ? [82, 82, 87]
             : sourcePage === 6 ? [150, 93]
-            : sourcePage === 7 ? [180, 76]
+            : sourcePage === 7 ? [142, 114]
             : null
           const sourceRowH = sourceRowHeights?.[0] ?? Math.floor((PAGE_H - flowTop - BOTTOM_MARGIN - sourceGap * (sourceRows.length - 1)) / sourceRows.length)
           pages.push({ index: pages.length + 1, rows: sourceRows, blocks: [], rowH: sourceRowH, rowHeights: sourceRowHeights, rowGap: sourceGap, columns: sourcePage === 1 ? 6 : undefined, sourcePage })
