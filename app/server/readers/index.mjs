@@ -102,15 +102,22 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null, 
   // intentionally isolated from the generic readers. Existing Wainscoting and
   // Accessories specs predate sourceProfile metadata and must keep their
   // established mixed-spec dispatch until they are migrated explicitly.
-  const sourceScopedProfiles = new Set(['carbon-crystal-wall', 'pvc-foam-board'])
+  const sourceScopedProfiles = new Set(['carbon-crystal-wall', 'pvc-foam-board', 'pvc-marble-sheet-grid', 'pvc-marble-sheet-3d', 'acoustic-panel', 'acoustic-panel-2024'])
   const availableSpecs = sourceScopedProfiles.has(sourceProfile)
     ? BUILTIN_SPECS.filter(s => s.sourceProfile === sourceProfile)
     : BUILTIN_SPECS
 
-  const noProduct = availableSpecs.find(s => s.nonProductPages?.includes(pageNo))
-  if (noProduct && await fixedLayoutMatches(sourceImage,noProduct,pageNo)) {
-    return { spec: noProduct, products: [], anchors: [], warnings: [], report,
-      noProducts: true, localEvidence: true }
+  // Several known families use page 1 as cover/materials, so page number alone
+  // cannot choose which non-product fingerprint to trust. Try every matching
+  // cover spec and keep the first one whose local evidence fits the rendered
+  // page; otherwise a Light Stone cover could fall through to the generic photo
+  // grid simply because an earlier catalogue also reserves page 1.
+  const noProductSpecs = availableSpecs.filter(s => s.nonProductPages?.includes(pageNo))
+  for (const noProduct of noProductSpecs) {
+    if (await fixedLayoutMatches(sourceImage, noProduct, pageNo)) {
+      return { spec: noProduct, products: [], anchors: [], warnings: [], report,
+        noProducts: true, localEvidence: true }
+    }
   }
 
   // Specific layouts first, then the shape-based fallback. A layout that keys off a
@@ -138,7 +145,7 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null, 
     }
     // More anchors means a better fit — a layout matching one stray mark loses to
     // one that finds a whole page of products.
-    candidates.sort((a, b) => b.count - a.count)
+    candidates.sort((a, b) => (b.spec.sourcePriority ?? 0) - (a.spec.sourcePriority ?? 0) || b.count - a.count)
 
     for (const { spec, count } of candidates) {
       onProgress(`Recognised the "${spec.title}" layout (${count} products) — reading it locally…`)

@@ -108,14 +108,14 @@ const ACCESSORIES_MARCH_SPECS = [
     { y: 205, h: 92, name: 'L Profile', size: 'Size : 25mm x 3000mm', third: '', photo: { x: 75, y: 10, w: 130, h: 68 }, drawing: { x: 20, y: 24, w: 40, h: 22 }, examples: [usage(14, 251, 64, 42, 'Gambar tambahan L Profile 25mm')] },
   ], /STEEL/),
   accessoryPage(11, [
-    { y: 29, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 20mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 20, y: 40, w: 40, h: 25 } },
-    { y: 112, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 10mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 20, y: 38, w: 40, h: 27 } },
-    { y: 195, h: 102, name: 'Wing Flat Bar', size: 'Size : 100mm x 3000mm', third: 'Thickness : 1mm', photo: { x: 42, y: 52, w: 160, h: 42 }, drawing: { x: 100, y: 8, w: 80, h: 34 } },
+    { y: 29, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 20mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 12, y: 68, w: 58, h: 30 } },
+    { y: 112, h: 83, name: 'U CHANNEL Profile (B)', size: 'Size : 10mm x 3000mm', third: 'Thickness : 10mm', photo: { x: 75, y: 8, w: 130, h: 64 }, drawing: { x: 12, y: 141, w: 58, h: 30 } },
+    { y: 195, h: 102, name: 'Wing Flat Bar', size: 'Size : 100mm x 3000mm', third: 'Thickness : 1mm', photo: { x: 42, y: 52, w: 160, h: 42 }, drawing: { x: 94, y: 188, w: 92, h: 38 } },
   ], /STEEL/),
   accessoryPage(12, [
-    { y: 29, h: 89, name: 'BRASS FLAT BAR - BFB 01', size: 'Size : 10mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 20, y: 47, w: 45, h: 18 } },
-    { y: 118, h: 89, name: 'BRASS FLAT BAR - BFB 02', size: 'Size : 5mm x 3000mm', third: 'Thickness : 5mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 20, y: 37, w: 45, h: 21 } },
-    { y: 207, h: 90, name: 'BRASS FLAT BAR - BFB 03', size: 'Size : 15mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 61 }, drawing: { x: 20, y: 40, w: 45, h: 19 } },
+    { y: 29, h: 89, name: 'BRASS FLAT BAR - BFB 01', size: 'Size : 10mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 12, y: 70, w: 58, h: 32 } },
+    { y: 118, h: 89, name: 'BRASS FLAT BAR - BFB 02', size: 'Size : 5mm x 3000mm', third: 'Thickness : 5mm', photo: { x: 70, y: 8, w: 135, h: 60 }, drawing: { x: 12, y: 158, w: 58, h: 32 } },
+    { y: 207, h: 90, name: 'BRASS FLAT BAR - BFB 03', size: 'Size : 15mm x 3000mm', third: 'Thickness : 3mm', photo: { x: 70, y: 8, w: 135, h: 61 }, drawing: { x: 12, y: 246, w: 64, h: 32 } },
   ], /BRASSFLATBAR/),
 ]
 
@@ -189,19 +189,20 @@ const CARBON_CRYSTAL_SPECS = [
     carbonPanelBox(7, 51), carbonPanelBox(47, 51), carbonPanelBox(88, 51), carbonPanelBox(129, 51), carbonPanelBox(169, 51),
   ], { supportIndex: 4, supportBox: { x: 10, y: 169, w: 190, h: 116 }, supportCaption: 'Carbon Crystal installation references' }),
   {
-    id: 'carbon-crystal-10',
-    title: 'Carbon Crystal Wall Panel edge profiles',
+    id: 'carbon-crystal-9-edge-profiles',
+    title: 'Carbon Crystal Wall Panel edge profiles (page 9)',
     sourceProfile: 'carbon-crystal-wall',
     category: 'carbon-crystal-wall',
     productShape: 'generic',
     builtin: true,
+    sourcePriority: 20,
     expectedAnchorCount: 3,
-    anchor: { type: 'fixed', pages: [10], boxes: [
+    anchor: { type: 'fixed', pages: [9], boxes: [
       { x: 4, y: 29, w: 202, h: 90 },
       { x: 4, y: 118, w: 202, h: 81 },
       { x: 4, y: 205, w: 202, h: 92 },
     ] },
-    kinds: [{ id: 'carbon-crystal-profile-rows', fields: [
+    kinds: [{ id: 'carbon-crystal-profile-rows', layoutRowGroup: 'carbon-edge-profile-page9', sourceLayout: 'carbon-edge-profile', fields: [
       { key: 'name', type: 'text', required: true, valueByAnchor: ['I Profile', 'END Profile', 'CORNER Profile'], absolute: true, box: { x: 0, y: 0, w: 210, h: 1 } },
       { key: 'subtitle', type: 'text', required: true, valueByAnchor: ["Size : 9'5\"", "Size : 9'5\"", "Size : 9'5\""], absolute: true, box: { x: 0, y: 0, w: 210, h: 1 } },
       { key: 'third', type: 'text', required: true, valueByAnchor: [
@@ -226,14 +227,10 @@ const CARBON_CRYSTAL_SPECS = [
         { x: 119, y: 174, w: 87, h: 22 },
         { x: 55, y: 262, w: 75, h: 35 },
       ] },
-    ], supportStripByAnchor: [
-      { x: 10, y: 35, w: 100, h: 53 },
-      { x: 10, y: 123, w: 100, h: 52 },
-      { x: 10, y: 211, w: 108, h: 53 },
-    ], supportCaptionByAnchor: [
-      'I Profile installation references',
-      'END Profile installation references',
-      'CORNER Profile installation references',
+    ], examplesByAnchor: [
+      [{ box: { x: 10, y: 35, w: 185, h: 53 }, caption: '' }],
+      [{ box: { x: 10, y: 123, w: 108, h: 52 }, caption: '' }],
+      [{ box: { x: 10, y: 211, w: 108, h: 53 }, caption: '' }],
     ] }],
   },
 ]
@@ -279,10 +276,230 @@ const PVC_FOAM_BOARD_SPECS = [{
   ] }],
 }]
 
+// PVC Marble Sheet / PVC Marble Sheet 3D (Jan/Sep 2026 supplier sheets) is a
+// deliberately simple 4-up photo grid.  The product photos are tall, pale
+// marble panels, so connected-component detection loses the white cards and
+// the HOT ITEM stickers can join a neighbouring card.  Keep the source rows
+// local and deterministic: the printed names are stable and the measured photo
+// rectangles are the source of truth.  This also means a renamed upload does
+// not fall through to paid vision just because its filename changed.
+const pvcSheetCard = (x, y, w, h) => ({ x, y, w, h })
+const pvcSheetPage = (page, names, photos) => ({
+  id: `pvc-marble-sheet-grid-${page}`,
+  title: `PVC Marble Sheet product grid page ${page}`,
+  sourceProfile: 'pvc-marble-sheet-grid',
+  productShape: 'generic',
+  builtin: true,
+  expectedAnchorCount: names.length,
+  anchor: { type: 'fixed', pages: [page], boxes: photos },
+  kinds: [{ id: `pvc-marble-sheet-grid-${page}-cards`, fields: [
+    { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: names, box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'subtitle', type: 'text', required: true, absolute: true,
+      valueByAnchor: names.map(() => 'PVC Marble Sheet'), box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: photos },
+  ] }],
+})
+
+const PVC_MARBLE_SHEET_SPECS = [
+  pvcSheetPage(1,
+    ['PV01 - Fishbelly White Marble', 'PV02 - Semi Gold Marble', 'PV003 - Cloudstone Marble', 'PV04 - Miracle White Marble',
+      'PV05N - Black Marble', 'PV006 - Golden Metal Marble', 'PV07 - Pasific Grey', 'PV08 - Lilac Marble'],
+    [pvcSheetCard(12, 51, 41, 139), pvcSheetCard(60, 51, 41, 139), pvcSheetCard(108, 51, 41, 139), pvcSheetCard(157, 51, 41, 139),
+      pvcSheetCard(12, 217, 41, 139), pvcSheetCard(60, 217, 41, 139), pvcSheetCard(108, 217, 41, 139), pvcSheetCard(157, 217, 41, 139)]),
+  pvcSheetPage(2,
+    ['PV09 - Zenstone Marble', 'PV10 - Fantasy Cream Marble', 'PV12 - Purple Like Marble', 'PV13 - Pandora Marble',
+      'PV14 - Natural Marble', 'PV15 - Fantasy Brown Marble', 'PV16 - Black Mirage Marble', 'PV17 - White Gold Marble'],
+    [pvcSheetCard(10, 48, 43, 140), pvcSheetCard(59, 48, 43, 140), pvcSheetCard(108, 48, 43, 140), pvcSheetCard(157, 48, 43, 140),
+      pvcSheetCard(11, 215, 42, 140), pvcSheetCard(59, 215, 43, 140), pvcSheetCard(108, 215, 43, 140), pvcSheetCard(157, 215, 43, 140)]),
+  pvcSheetPage(3,
+    ['PV18 - Armani Grey Matte Marble', 'PV18N - Armani Grey Gloss Marble', 'PV20 - Matte Cream Marble', 'PV22 - Luminus Marble',
+      'PV23 - Luxury Marble', 'PV24 - Mossfire Marble', 'PV25 - Rainfall Marble'],
+    [pvcSheetCard(12, 51, 41, 139), pvcSheetCard(60, 51, 41, 139), pvcSheetCard(108, 51, 41, 139), pvcSheetCard(157, 51, 41, 139),
+      pvcSheetCard(12, 217, 41, 65), pvcSheetCard(60, 217, 41, 65), pvcSheetCard(108, 217, 41, 65)]),
+]
+
+// PVC Marble Sheet 3D (September 2025 / August 2026 editions) uses the same
+// one-product source page repeatedly, but the top reference image contains two
+// or three printed boards.  Split that measured reference into stable products;
+// the lower installation photo is supporting source material, not another card.
+const pvc3dPage = (page, codes, panelCount) => {
+  const x = panelCount === 2 ? 40 : 11
+  const w = panelCount === 2 ? 81 : 122
+  const panels = Array.from({ length: panelCount }, (_, i) => ({
+    x: x + (w / panelCount) * i + 0.5, y: 52, w: w / panelCount - 1, h: 98,
+  }))
+  return {
+    id: `pvc-marble-sheet-3d-page-${page}`,
+    title: `PVC Marble Sheet 3D product page ${page}`,
+    sourceProfile: 'pvc-marble-sheet-3d',
+    productShape: 'generic', builtin: true, expectedAnchorCount: codes.length,
+    anchor: { type: 'fixed', pages: [page], boxes: panels },
+    kinds: [{ id: `pvc-marble-sheet-3d-${page}-cards`, fields: [
+      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: codes, box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, absolute: true,
+        valueByAnchor: codes.map(() => '1200mm(W) x 3000mm(L) x 3mm(T)'), box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: panels },
+    ] }],
+  }
+}
+
+const PVC_MARBLE_SHEET_3D_SPECS = [
+  { id: 'pvc-marble-sheet-3d-cover', title: 'PVC Marble Sheet 3D cover', sourceProfile: 'pvc-marble-sheet-3d', builtin: true, nonProductPages: [1, 11], nonProductEvidence: { 1: [/PVC.*MARBLE.*SHEET/i], 11: [/MATERIAL.*TOOLS/i] } },
+  pvc3dPage(2, ['3D-1A', '3D-1B'], 2), pvc3dPage(3, ['3D-2A', '3D-2B'], 2),
+  pvc3dPage(4, ['3D-3A', '3D-3B', '3D-3C'], 3), pvc3dPage(5, ['3D-7A', '3D-7B', '3D-7C'], 3),
+  pvc3dPage(6, ['3D-9A', '3D-9B'], 2), pvc3dPage(7, ['3D-9A', '3D-9B', '3D-9C'], 3),
+  pvc3dPage(8, ['3D-10C', '3D-10B', '3D-10A'], 3), pvc3dPage(9, ['3D-11A', '3D-11B'], 2),
+  pvc3dPage(10, ['3D-12A', '3D-12B', '3D-12C'], 3),
+]
+
+// Acoustic Panel (August 2025) has a cover followed by four one-product
+// profile sheets.  The product shot is the small angled sample at upper left;
+// the large installed scenes below are examples and must not become products.
+const acousticPage = (page, name) => ({
+  id: `acoustic-panel-page-${page}`, title: `Acoustic Panel product page ${page}`,
+  sourceProfile: 'acoustic-panel', productShape: 'generic', builtin: true,
+  expectedAnchorCount: 1, anchor: { type: 'fixed', pages: [page], boxes: [{ x: 8, y: 42, w: 104, h: 115 }] },
+  kinds: [{ id: `acoustic-panel-${page}-card`, fields: [
+    { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: [name], box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'subtitle', type: 'text', required: true, absolute: true, valueByAnchor: ['600mm(W) x 21mm(T) x 3000mm(L)'], box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: [{ x: 16, y: 55, w: 50, h: 48 }] },
+  ] }],
+})
+const ACOUSTIC_PANEL_SPECS = [
+  { id: 'acoustic-panel-cover', title: 'Acoustic Panel cover / materials', sourceProfile: 'acoustic-panel', builtin: true, nonProductPages: [1], nonProductEvidence: { 1: [/ACOUSTIC\s+PANEL/i, /MATERIAL/i] } },
+  acousticPage(2, 'WV01 Teak (Acoustic)'), acousticPage(3, 'WV02 Light Grey (Acoustic)'),
+  acousticPage(4, 'WV03 Brown (Acoustic)'), acousticPage(5, 'WV04 Black (Acoustic)'),
+]
+
+// The older November 2024 Acoustic Panel edition is a different layout: page 2
+// contains WV01 and WV02 side by side, while page 3 is a testing/material page.
+// Do not force it through the August four-page reader or it silently drops one
+// of the two products.
+const ACOUSTIC_PANEL_2024_SPECS = [
+  { id: 'acoustic-panel-2024-cover', title: 'Acoustic Panel 2024 cover', sourceProfile: 'acoustic-panel-2024', builtin: true, nonProductPages: [1, 3], nonProductEvidence: { 1: [/ACOUSTIC\s+PANEL/i], 3: [/PRODUCT\s+TESTING/i] } },
+  {
+    id: 'acoustic-panel-2024-page-2', title: 'Acoustic Panel 2024 product page', sourceProfile: 'acoustic-panel-2024', productShape: 'generic', builtin: true, expectedAnchorCount: 2,
+    anchor: { type: 'fixed', pages: [2], boxes: [{ x: 12, y: 35, w: 88, h: 180 }, { x: 112, y: 35, w: 88, h: 180 }] },
+    kinds: [{ id: 'acoustic-panel-2024-cards', fields: [
+      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: ['WV01 Teak (Acoustic)', 'WV02 Light Grey (Acoustic)'], box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'subtitle', type: 'text', required: true, absolute: true, valueByAnchor: ['600mm(W) x 21mm(T) x 3000mm(L)', '600mm(W) x 21mm(T) x 3000mm(L)'], box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: [{ x: 14, y: 70, w: 50, h: 50 }, { x: 114, y: 70, w: 50, h: 50 }] },
+    ] }],
+  },
+]
+
+const lightStonePanel = (x, y, w = 47, h = 100) => ({ x, y, w, h })
+const lightStoneCard = (x, y, w = 100, h = 124) => ({ x, y, w, h })
+const lightStonePairSpec = (page, names, photos, options = {}) => ({
+  id: `light-stone-wall-page-${page}`,
+  title: `Light Stone Wall Panel page ${page}`,
+  category: 'light-stone-wall',
+  productShape: 'generic',
+  builtin: true,
+  sourcePriority: 25,
+  expectedAnchorCount: names.length,
+  anchor: { type: 'fixed', pages: [page], boxes: options.anchors },
+  kinds: [{
+    id: `light-stone-wall-cards-${page}`,
+    ...(options.layoutRowGroup ? { layoutRowGroup: options.layoutRowGroup } : {}),
+    fields: [
+      { key: 'name', type: 'text', required: true, valueByAnchor: names,
+        codeByAnchor: options.codes, box: { x: 0, y: 0, w: 98, h: 22 },
+        codeEvidenceByAnchor: names.map(() => ({ box: options.codeBox ?? { x: 3, y: -1, w: 95, h: 20 }, lightText: Boolean(options.lightCode) })) },
+      { key: 'subtitle', type: 'text', required: true,
+        valueByAnchor: names.map(() => 'Size : 1220mm x 2440mm'), box: { x: 0, y: 22, w: 98, h: 10 } },
+      { key: 'third', type: 'text', required: true,
+        valueByAnchor: names.map(() => page === 5 ? 'Thickness : 2mm' : 'Thickness : 5mm'), box: { x: 0, y: 30, w: 98, h: 10 } },
+      { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: photos.map(pair => pair.main) },
+    ],
+    examplesByAnchor: photos.map(pair => [
+      { box: pair.example, caption: '', role: 'usage' },
+      ...(pair.examples ?? []).map(box => ({ box, caption: '', role: 'usage' })),
+    ]),
+    ...(options.supportStrip
+      ? { supportStripByAnchor: names.map(() => options.supportStrip),
+          supportCaptionByAnchor: names.map(() => options.supportCaption ?? '') }
+      : {}),
+  }],
+})
+
+// Light Stone Wall Panel (October 2026) is a five-page supplier document. Its
+// product pages are two-up cards with two rectangular panel views (before/after
+// backlighting); the first page is cover/material information and pages 4-5 also
+// carry installation galleries. The generic photo-grid reader used to mistake
+// captions, feature icons and installation photos for products, so an upload
+// could finish with only one kept page. These source rectangles keep the actual
+// panel views and the supporting installation scene separate without paid AI.
+const LIGHT_STONE_SPECS = [
+  {
+    id: 'light-stone-wall-cover',
+    title: 'Light Stone Wall Panel cover / materials',
+    category: 'light-stone-wall',
+    builtin: true,
+    nonProductPages: [1],
+    nonProductEvidence: { 1: [/LIGHTSTONEWALLPANEL/] },
+  },
+  lightStonePairSpec(2,
+    ['LS01 - White Crystal', 'LS02 - Celeste Gold', 'LS03 - Golden Vein', 'LS04 - Gold dust'],
+    [
+      { main: lightStonePanel(5, 53), example: lightStonePanel(54, 53) },
+      { main: lightStonePanel(108, 53), example: lightStonePanel(157, 53) },
+      { main: lightStonePanel(6, 179), example: lightStonePanel(54, 179) },
+      { main: lightStonePanel(108, 179), example: lightStonePanel(157, 179) },
+    ], {
+      codes: ['LS01', 'LS02', 'LS03', 'LS04'],
+      anchors: [lightStoneCard(3, 34), lightStoneCard(107, 34), lightStoneCard(3, 158, 100, 137), lightStoneCard(107, 158, 100, 137)],
+    }),
+  lightStonePairSpec(3,
+    ['LS05 - Aurora Bloom', 'LS06 - Aqua Lux', 'LS04N - Gold Dust 3D', 'LS05N - Aurora Bloom 3D'],
+    [
+      { main: lightStonePanel(7, 53), example: lightStonePanel(54, 53) },
+      { main: lightStonePanel(108, 53), example: lightStonePanel(157, 53) },
+      { main: lightStonePanel(7, 181), example: lightStonePanel(55, 181) },
+      { main: lightStonePanel(108, 181), example: lightStonePanel(157, 181) },
+    ], {
+      codes: ['LS05', 'LS06', 'LS04N', 'LS05N'],
+      anchors: [lightStoneCard(3, 34), lightStoneCard(107, 34), lightStoneCard(3, 158, 100, 139), lightStoneCard(107, 158, 100, 139)],
+    }),
+  lightStonePairSpec(4, ['LS07 - Aurora Ice 3D'],
+    [{ main: lightStonePanel(11, 53, 45), example: lightStonePanel(59, 53, 48) }], {
+      codes: ['LS07'],
+      anchors: [lightStoneCard(5, 34, 102, 124)],
+      layoutRowGroup: 'light-stone-wall-page-4',
+      supportStrip: { x: 0, y: 160, w: 210, h: 137 },
+      supportCaption: 'Backlit Wall Installation (Step-by-Step)',
+    }),
+  lightStonePairSpec(5, ['ICP01 - Opal Ice'],
+    [{
+      main: lightStonePanel(6, 49, 43, 86),
+      example: lightStonePanel(50, 49, 43, 86),
+      examples: [
+        { x: 111, y: 49, w: 36, h: 42 },
+        { x: 149, y: 49, w: 55, h: 42 },
+        { x: 111, y: 95, w: 93, h: 33 },
+      ],
+    }], {
+      codes: ['ICP01'],
+      anchors: [lightStoneCard(4, 34, 100, 125)],
+      layoutRowGroup: 'light-stone-wall-page-5',
+      // ICP01 is printed in dark ink on the light product header.  Keep a
+      // little more vertical room for OCR at the small source scale; applying
+      // the light-text mask here would erase the actual dark lettering.
+      codeBox: { x: 0, y: -2, w: 100, h: 30 },
+      supportStrip: { x: 0, y: 160, w: 210, h: 137 },
+      supportCaption: 'Backlit Wall Installation (Step-by-Step)',
+    }),
+]
+
 export const BUILTIN_SPECS = [
   ...ACCESSORIES_MARCH_SPECS,
   ...CARBON_CRYSTAL_SPECS,
   ...PVC_FOAM_BOARD_SPECS,
+  ...PVC_MARBLE_SHEET_SPECS,
+  ...PVC_MARBLE_SHEET_3D_SPECS,
+  ...ACOUSTIC_PANEL_SPECS,
+  ...ACOUSTIC_PANEL_2024_SPECS,
+  ...LIGHT_STONE_SPECS,
   {
     // These pages are catalogue material, but contain no product cards. They
     // stay in the exported flow as whole pages and must never trigger AI OCR.

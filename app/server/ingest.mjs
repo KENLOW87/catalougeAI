@@ -41,7 +41,7 @@ const execFileAsync = promisify(execFile)
 // does not rerender a complex Illustrator PDF every time. The version is part
 // of the key: changing a source reader/crop rule automatically invalidates old
 // results instead of reusing a stale extraction.
-const INGEST_CACHE_VERSION = 'local-read-v5-pvc-photo-crops'
+const INGEST_CACHE_VERSION = 'local-read-v8-acoustic-2024-reader'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
@@ -143,6 +143,14 @@ export function sourceProfileForFilename(filename = '') {
   if (/carbon\s+crystal(?:\s+wall\s+panel)?/i.test(value)) return 'carbon-crystal-wall'
   if (/wainscoting/i.test(value)) return 'wainscoting'
   if (/pvc\s+foam\s+board/i.test(value)) return 'pvc-foam-board'
+  if (/light\s+stone(?:\s+wall)?/i.test(value)) return 'light-stone-wall'
+  // These supplier files are frequently renamed by WhatsApp/Downloads. Keep
+  // both the plain and 3D PVC Marble names on the same measured sheet reader;
+  // routing still uses the printed header/filename to choose the destination.
+  if (/pvc\s+marble\s+sheet\s+3d/i.test(value) || /marble\s+sheet.*3d/i.test(value)) return 'pvc-marble-sheet-3d'
+  if (/pvc\s+marble\s+sheet/i.test(value)) return 'pvc-marble-sheet-grid'
+  if (/acoustic\s+panel.*(?:nov|2024)/i.test(value) || /acoustic\s+panel.*2024/i.test(value)) return 'acoustic-panel-2024'
+  if (/acoustic\s+panel/i.test(value)) return 'acoustic-panel'
   if (/accessories\s*\(?(?:march|mac)\b/i.test(value)) return 'accessories-march'
   return null
 }
@@ -159,6 +167,10 @@ async function sourceProfileForPdf(pdfPath, filename = '') {
     const text = String(stdout ?? '')
     if (/carbon\s+crystal\s+wall\s+panel/i.test(text)) return 'carbon-crystal-wall'
     if (/pvc\s+foam\s+board/i.test(text)) return 'pvc-foam-board'
+    if (/light\s+stone\s+wall\s+panel/i.test(text)) return 'light-stone-wall'
+    if (/pvc\s+marble\s+sheet\s+3d/i.test(text)) return 'pvc-marble-sheet-3d'
+    if (/pvc\s+marble\s+sheet/i.test(text)) return 'pvc-marble-sheet-grid'
+    if (/acoustic\s+panel/i.test(text)) return 'acoustic-panel'
   } catch {
     // Text extraction is only a fast recognition hint. Rendering remains the
     // source of truth when a PDF has no text layer.
@@ -602,6 +614,7 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     layoutPairGroup:p.layoutPairGroup,
     layoutFullRow:p.layoutFullRow,
     layoutRowGroup:p.layoutRowGroup,
+    sourceLayout:p.sourceLayout,
     supportStrip:p.supportStrip,
     supportCaption:p.supportCaption,
     productShape:p.productShape ?? spec?.productShape ?? null,
@@ -780,7 +793,8 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // neighbouring finish. Skip that redundant pass for this trusted profile;
     // preferNativePhotos() already keeps the measured rendered crop.
     const renderDpi = localOnlyKnownCatalogue ? ASSET_DPI : VISION_DPI
-    const allowNativeExtraction = localOnlyKnownCatalogue && sourceProfile !== 'carbon-crystal-wall'
+    const allowNativeExtraction = localOnlyKnownCatalogue &&
+      !['carbon-crystal-wall', 'light-stone-wall'].includes(sourceProfile)
     const [nativePages, assetPages] = await Promise.all([
       allowNativeExtraction ? extractNativePdfImages(pdfPath, dir, onProgress) : Promise.resolve([]),
       renderPages(pdfPath, dir, renderDpi, 'a', onProgress, shouldStop),
