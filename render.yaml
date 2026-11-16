@@ -32,3 +32,12 @@ services:
         value: gpt-image-1.5
       - key: CATALOGUE_ENABLE_AI_FALLBACK
         value: "0"
+      # Defaults OFF on purpose: "1" puts the catalogue assistant bot on the
+      # public, no-login site itself — able to add/delete products and run AI
+      # photo edits there, reachable by anyone with the URL, not only the
+      # admin. Flip to "1" in the Render dashboard only as a separate,
+      # deliberate step once you accept that risk.
+      - key: PUBLIC_CATALOGUE_EDIT
+        value: "0"
+      - key: PUBLIC_BOT_RATE_LIMIT_PER_HOUR
+        value: "20"

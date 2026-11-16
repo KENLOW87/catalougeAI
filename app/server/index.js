@@ -48,17 +48,63 @@ app.use((req, res, next) => {
 // no code change to carry it.
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 const PUBLIC_GET_PATHS = [/^\/api\/published$/, /^\/api\/published\/[a-zA-Z0-9_-]+$/, /^\/api\/ai\/status$/, /^\/api\/export-data\/[a-zA-Z0-9-]+$/]
+
+// A SEPARATE, explicit opt-in from ADMIN_PASSWORD: it puts the "Catalogue
+// assistant" bot on the public, no-login site itself, able to add/delete
+// products and run AI photo edits on the LIVE catalogue — anyone with the
+// URL, not just the admin. Requested and confirmed knowing the risk: a
+// stranger can empty or deface the public catalogue, and paid AI calls are
+// reachable by anyone. The admin's own working copy is never at risk either
+// way — it lives only in the admin's own browser; the worst case here is
+// "re-publish from the admin to restore what the public site shows."
+// Defaults OFF even with ADMIN_PASSWORD already set and this code deployed,
+// so turning it on is always a second, deliberate action.
+const PUBLIC_CATALOGUE_EDIT = process.env.PUBLIC_CATALOGUE_EDIT === '1'
+const PUBLIC_EDIT_POST_PATHS = [/^\/api\/publish\/[a-zA-Z0-9_-]+$/, /^\/api\/interpret$/, /^\/api\/image\/edit$/]
+// Render sits behind a proxy; without this req.ip is the proxy's address for
+// every visitor, which would rate-limit everyone as a single caller.
+app.set('trust proxy', 1)
+
+const isAdminAuthed = req => {
+  if (!ADMIN_PASSWORD) return false
+  const [, encoded] = (req.headers.authorization ?? '').split(' ')
+  const [, suppliedPassword] = (encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '').split(':')
+  return suppliedPassword === ADMIN_PASSWORD
+}
+
 app.use((req, res, next) => {
   if (!ADMIN_PASSWORD) return next()
   const isPublicGet = req.method === 'GET' && PUBLIC_GET_PATHS.some(re => re.test(req.path))
+  const isPublicEditPost = PUBLIC_CATALOGUE_EDIT && req.method === 'POST' && PUBLIC_EDIT_POST_PATHS.some(re => re.test(req.path))
   const isPublicAsset = req.path === '/public.html'
-  const needsAuth = !isPublicGet && !isPublicAsset && (req.path.startsWith('/api/') || req.path === '/' || req.path === '/index.html')
+  const needsAuth = !isPublicGet && !isPublicEditPost && !isPublicAsset && (req.path.startsWith('/api/') || req.path === '/' || req.path === '/index.html')
   if (!needsAuth) return next()
-  const [, encoded] = (req.headers.authorization ?? '').split(' ')
-  const [, suppliedPassword] = (encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '').split(':')
-  if (suppliedPassword === ADMIN_PASSWORD) return next()
+  if (isAdminAuthed(req)) return next()
   res.setHeader('WWW-Authenticate', 'Basic realm="GEOMETRA Admin"')
   res.status(401).send('Authentication required')
+})
+
+// Bounds the cost/abuse exposure of the two actually-costly public routes
+// above (/api/interpret, /api/image/edit) — a single visitor or script could
+// otherwise call either endlessly. Per-IP, in-memory, resets on a restart;
+// this is "a stranger cannot run up the bill", not a precise global limiter.
+// Saving an edit (/api/publish/:id) is not itself a paid call, so it is not
+// limited here. Admin-authenticated requests are never limited.
+const PUBLIC_RATE_LIMIT_PER_HOUR = Number(process.env.PUBLIC_BOT_RATE_LIMIT_PER_HOUR ?? 20)
+const RATE_LIMITED_PATHS = [/^\/api\/interpret$/, /^\/api\/image\/edit$/]
+const hitsByIp = new Map()
+app.use((req, res, next) => {
+  if (!PUBLIC_CATALOGUE_EDIT || !RATE_LIMITED_PATHS.some(re => re.test(req.path))) return next()
+  if (isAdminAuthed(req)) return next()
+  const now = Date.now()
+  const ip = req.ip ?? 'unknown'
+  const hits = (hitsByIp.get(ip) ?? []).filter(t => now - t < 3_600_000)
+  if (hits.length >= PUBLIC_RATE_LIMIT_PER_HOUR) {
+    return res.status(429).json({ error: `Too many requests from this visitor this hour (limit ${PUBLIC_RATE_LIMIT_PER_HOUR}/hour) — try again later.` })
+  }
+  hits.push(now)
+  hitsByIp.set(ip, hits)
+  next()
 })
 
 // Use the Chrome already installed on this machine rather than downloading one.
@@ -278,7 +324,7 @@ app.post('/api/interpret', async (req, res) => {
   }
 })
 
-app.get('/api/ai/status', (_req, res) => res.json({ openai: Boolean(process.env.OPENAI_API_KEY), ready: Boolean(process.env.OPENAI_API_KEY || hasCredentials()) }))
+app.get('/api/ai/status', (_req, res) => res.json({ openai: Boolean(process.env.OPENAI_API_KEY), ready: Boolean(process.env.OPENAI_API_KEY || hasCredentials()), publicCatalogueEdit: PUBLIC_CATALOGUE_EDIT }))
 app.post('/api/image/edit', async (req, res) => {
   try {
     const image = await editProductImage(req.body?.image, req.body?.instruction, { productOnly: req.body?.productOnly === true })
