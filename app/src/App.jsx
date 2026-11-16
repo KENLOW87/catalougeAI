@@ -540,6 +540,30 @@ export default function App() {
     )
   }
 
+  // Publish every non-empty browser catalogue in one request. The server skips
+  // empty entries and never deletes an older published snapshot omitted from the
+  // request, so a blank catalogue cannot wipe an already published PDF.
+  const publishAll = async () => {
+    const catalogues = catalogueList(byCategory, chromeByCategory, deletedCategories, customCategories)
+      .map(c => ({ ...c, title: resolveCategory(c.category, c.chrome, customCategories).title }))
+    if (!catalogues.length) { setBusy('Nothing to publish yet — no catalogue has products.'); return }
+    setBusy(`Publishing ${catalogues.length} catalogues…`)
+    try {
+      const res = await fetch(apiUrl('/api/publish-all'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catalogues }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+      const skipped = body.skipped?.length ?? 0
+      setBusy(`Published ${body.published?.length ?? 0} catalogue${body.published?.length === 1 ? '' : 's'} — live on the public site.` +
+        (skipped ? ` Skipped ${skipped} empty catalogue${skipped === 1 ? '' : 's'}.` : ''))
+    } catch (e) {
+      setBusy(`Publish all failed: ${e.message}`)
+    }
+  }
+
   // Snapshot this catalogue's current data to the server so the public, read-only
   // site can show it — further edits here do not reach the public site until this
   // is pressed again. Same status-line pattern as export (`setBusy`), not a new one.
@@ -703,6 +727,7 @@ export default function App() {
             onOpen={id => { setCategoryId(id); setShowDashboard(false); setSidebarOpen(true) }}
             onImport={(id, explicit = true) => { setImportCategoryId(explicit && id ? id : null); setTargetChosen(Boolean(explicit) && Boolean(id)); setIngesting(true) }}
             onExportAll={exportAll}
+            onPublishAll={publishAll}
             onResetAll={resetDemo}
             onExportData={exportData}
             onImportData={importData}

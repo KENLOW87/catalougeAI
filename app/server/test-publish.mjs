@@ -45,10 +45,10 @@ try {
   assert.deepEqual(snapshot.chrome, chrome)
   assert.equal(snapshot.title, 'Fake Category')
 
-  // Re-publishing overwrites rather than duplicating.
-  await post('/api/publish/fake-category', { products: [], chrome: null, title: 'Fake Category' })
-  const overwritten = await (await get('/api/published/fake-category')).json()
-  assert.deepEqual(overwritten.products, [])
+  // An empty catalogue must never overwrite the currently published snapshot.
+  assert.equal((await post('/api/publish/fake-category', { products: [], chrome: null, title: 'Fake Category' })).status, 400)
+  const preserved = await (await get('/api/published/fake-category')).json()
+  assert.deepEqual(preserved.products, products)
   assert.equal((await (await get('/api/published')).json()).length, 1, 'still exactly one snapshot')
 
   // Malformed ids are rejected before fileFor() ever builds a path from them. A
