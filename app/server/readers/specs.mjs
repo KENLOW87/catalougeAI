@@ -288,6 +288,7 @@ const pvcSheetPage = (page, names, photos) => ({
   id: `pvc-marble-sheet-grid-${page}`,
   title: `PVC Marble Sheet product grid page ${page}`,
   sourceProfile: 'pvc-marble-sheet-grid',
+  category: 'pvc-marble-sheet',
   productShape: 'generic',
   builtin: true,
   expectedAnchorCount: names.length,
@@ -332,6 +333,7 @@ const pvc3dPage = (page, codes, panelCount) => {
     id: `pvc-marble-sheet-3d-page-${page}`,
     title: `PVC Marble Sheet 3D product page ${page}`,
     sourceProfile: 'pvc-marble-sheet-3d',
+    category: 'pvc-marble-sheet-3d',
     productShape: 'generic', builtin: true, expectedAnchorCount: codes.length,
     anchor: { type: 'fixed', pages: [page], boxes: panels },
     kinds: [{ id: `pvc-marble-sheet-3d-${page}-cards`, fields: [
@@ -357,7 +359,7 @@ const PVC_MARBLE_SHEET_3D_SPECS = [
 // the large installed scenes below are examples and must not become products.
 const acousticPage = (page, name) => ({
   id: `acoustic-panel-page-${page}`, title: `Acoustic Panel product page ${page}`,
-  sourceProfile: 'acoustic-panel', productShape: 'generic', builtin: true,
+  sourceProfile: 'acoustic-panel', category: 'acoustic-panel', productShape: 'generic', builtin: true,
   expectedAnchorCount: 1, anchor: { type: 'fixed', pages: [page], boxes: [{ x: 8, y: 42, w: 104, h: 115 }] },
   kinds: [{ id: `acoustic-panel-${page}-card`, fields: [
     { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: [name], box: { x: 0, y: 0, w: 1, h: 1 } },
@@ -379,6 +381,7 @@ const ACOUSTIC_PANEL_2024_SPECS = [
   { id: 'acoustic-panel-2024-cover', title: 'Acoustic Panel 2024 cover', sourceProfile: 'acoustic-panel-2024', builtin: true, nonProductPages: [1, 3], nonProductEvidence: { 1: [/ACOUSTIC\s+PANEL/i], 3: [/PRODUCT\s+TESTING/i] } },
   {
     id: 'acoustic-panel-2024-page-2', title: 'Acoustic Panel 2024 product page', sourceProfile: 'acoustic-panel-2024', productShape: 'generic', builtin: true, expectedAnchorCount: 2,
+    category: 'acoustic-panel',
     anchor: { type: 'fixed', pages: [2], boxes: [{ x: 12, y: 35, w: 88, h: 180 }, { x: 112, y: 35, w: 88, h: 180 }] },
     kinds: [{ id: 'acoustic-panel-2024-cards', fields: [
       { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: ['WV01 Teak (Acoustic)', 'WV02 Light Grey (Acoustic)'], box: { x: 0, y: 0, w: 1, h: 1 } },
