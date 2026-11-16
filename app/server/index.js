@@ -37,6 +37,30 @@ app.use((req, res, next) => {
   next()
 })
 
+// Everything here is reachable with no login (localhost has always been
+// single-user). Once deployed, the only thing meant to be open to a stranger
+// is the read-only published-catalogue site — not uploads, AI edits, the
+// activity/cost ledger, or publishing itself. Set ADMIN_PASSWORD (Render env
+// var) to require it via HTTP Basic Auth for everything else; leaving it
+// unset (plain local dev) keeps today's behaviour exactly as it is. Gating
+// the admin shell ('/') makes the browser prompt once and cache the
+// credential for the origin, so every later fetch() from the admin app needs
+// no code change to carry it.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+const PUBLIC_GET_PATHS = [/^\/api\/published$/, /^\/api\/published\/[a-zA-Z0-9_-]+$/, /^\/api\/ai\/status$/, /^\/api\/export-data\/[a-zA-Z0-9-]+$/]
+app.use((req, res, next) => {
+  if (!ADMIN_PASSWORD) return next()
+  const isPublicGet = req.method === 'GET' && PUBLIC_GET_PATHS.some(re => re.test(req.path))
+  const isPublicAsset = req.path === '/public.html'
+  const needsAuth = !isPublicGet && !isPublicAsset && (req.path.startsWith('/api/') || req.path === '/' || req.path === '/index.html')
+  if (!needsAuth) return next()
+  const [, encoded] = (req.headers.authorization ?? '').split(' ')
+  const [, suppliedPassword] = (encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '').split(':')
+  if (suppliedPassword === ADMIN_PASSWORD) return next()
+  res.setHeader('WWW-Authenticate', 'Basic realm="GEOMETRA Admin"')
+  res.status(401).send('Authentication required')
+})
+
 // Use the Chrome already installed on this machine rather than downloading one.
 installActivity(app)
 installPublish(app)
