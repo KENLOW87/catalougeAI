@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import ActivityPanel from './ActivityPanel.jsx'
 import { CATEGORIES, parentLabel } from '../lib/categories/index.js'
 import { defaultCategoryFor } from '../lib/categories/default.js'
@@ -7,8 +7,9 @@ import { runQc } from '../lib/qc.js'
 const categoryFor = (id, parent, chrome) =>
   CATEGORIES[id] ?? defaultCategoryFor(parent, chrome)
 
-export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onResetAll, filledCount }) {
+export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onResetAll, onExportData, onImportData, filledCount }) {
   const [showActivity, setShowActivity] = useState(false)
+  const importFileRef = useRef(null)
   const rows = useMemo(() => parents.flatMap(parent => {
     const ids = (parent.children.length ? parent.children : [parent.id]).filter(id => !deletedCategories[id])
     return ids.map(id => {
@@ -108,9 +109,30 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
             <div className="dashboard-card-actions">
               <button className="primary" onClick={() => onOpen(row.id)}>Open catalogue</button>
               <button onClick={() => onImport(row.id, true)}>Upload file</button>
+              {row.used && <button onClick={() => onExportData?.(row.id)}>Export</button>}
             </div>
           </article>
         ))}
+      </div>
+
+      {/* Catalogue data lives in THIS browser only — localhost and a deployed
+          site never share it. This is the bridge between them: download one
+          catalogue here (use a card's own "Export" button above — scoped to
+          one catalogue, because every photo is stored inline and "everything"
+          can run to hundreds of MB), then import that file wherever the admin
+          is opened from next (e.g. a live deployment), without re-reading the
+          source PDF and losing every manual edit made since. */}
+      <div className="dashboard-danger">
+        <div>
+          <h2>Move data to another browser/site</h2>
+          <p>Use a catalogue card's own "Export" button above for one catalogue at a time (recommended — stays a reasonable size). "Export data" below bundles every catalogue into one file, which can be very large. Importing replaces only the catalogue(s) the file contains; everything else already here is left alone.</p>
+        </div>
+        <div className="dashboard-card-actions">
+          <button onClick={() => onExportData?.()}>Export data (everything, can be huge)</button>
+          <input ref={importFileRef} type="file" accept="application/json" style={{ display: 'none' }}
+                 onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onImportData?.(f) }} />
+          <button onClick={() => importFileRef.current?.click()}>Import data</button>
+        </div>
       </div>
 
       {/* Separated from the everyday actions above — wiping everything is rare

@@ -182,6 +182,27 @@ export async function removeCustomCategory(id) {
   try { await tx(db, 'readwrite', s => s.delete(`custom.${id}`)) } finally { db.close() }
 }
 
+/** Merge the shape `loadAll` returns (minus `moved`) into this browser's
+ *  data — e.g. a backup exported from a different browser/origin, since
+ *  catalogue data lives per-origin and localhost and a deployed site never
+ *  share it. MERGES by category id rather than wiping the store first: an
+ *  export scoped to one catalogue (the common case — full exports run into
+ *  real-world sizes of hundreds of MB once every photo is inline) must not
+ *  erase every OTHER catalogue already on the destination. One transaction:
+ *  either the whole file lands, or none of it does. */
+export async function importAll({ byCategory = {}, chromeByCategory = {}, acceptedByCategory = {}, deletedCategories = {}, customCategories = {} }) {
+  const db = await open()
+  try {
+    await tx(db, 'readwrite', s => {
+      for (const [id, products] of Object.entries(byCategory)) s.put(products, catKey(id))
+      for (const [id, chrome] of Object.entries(chromeByCategory)) s.put(chrome, chromeKey(id))
+      for (const [id, keys] of Object.entries(acceptedByCategory)) s.put(keys, `accepted.${id}`)
+      for (const [id, isDeleted] of Object.entries(deletedCategories)) if (isDeleted) s.put(true, `deleted.${id}`)
+      for (const [id, category] of Object.entries(customCategories)) s.put(category, `custom.${id}`)
+    })
+  } finally { db.close() }
+}
+
 /** Wipe EVERY record this browser holds — every catalogue, header, accepted
  *  check, deletion marker and created category. For starting over clean, e.g.
  *  before demoing to a new company. The two built-in categories' seed examples

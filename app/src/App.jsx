@@ -17,7 +17,7 @@ import { repairSourcePlacement } from './lib/repair-source-placement.js'
 import { upsertSeriesProduct } from './lib/product-order.js'
 import { repairLegacyAccessoriesProducts } from './lib/repair-known-source.js'
 import { resolveCategory } from './lib/resolveCategory.js'
-import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, removeCustomCategory, clearAll } from './lib/store.js'
+import { loadAll, saveCatalogue, saveChrome, saveAccepted, removeCatalogue, markCategoryDeleted, restoreCategory, saveCustomCategory, removeCustomCategory, clearAll, importAll } from './lib/store.js'
 
 const parentById = id => PARENTS.find(p => p.id === id)
 const LEGACY_ACCESSORIES = new Set(['accessories-led', 'pvc-marble'])
@@ -365,6 +365,61 @@ export default function App() {
     }
   }
 
+  // Catalogue data lives in THIS browser's IndexedDB, scoped to this origin —
+  // localhost and a deployed site never share it. This is the bridge: a
+  // one-time download/upload of what `loadAll` returns, so the exact edited
+  // catalogue (not a re-read of the source PDF) can be carried to wherever
+  // the admin is opened from next.
+  //
+  // Scoped to ONE category by default. Every product photo is stored inline
+  // as base64, so "export everything" measured at 336 MB on a real 154-product
+  // catalogue set — far past the server's 300 MB upload limit and not
+  // something a browser should round-trip through a file picker. One
+  // catalogue at a time stays in the tens of MB.
+  const exportData = async (categoryId = null) => {
+    const { byCategory, chromeByCategory, acceptedByCategory, deletedCategories, customCategories } = await loadAll()
+    const ids = categoryId ? [categoryId] : Object.keys(byCategory)
+    const pick = map => Object.fromEntries(ids.filter(id => id in map).map(id => [id, map[id]]))
+    const payload = { version: 1, exportedAt: new Date().toISOString(),
+      data: { byCategory: pick(byCategory), chromeByCategory: pick(chromeByCategory),
+        acceptedByCategory: pick(acceptedByCategory), deletedCategories: pick(deletedCategories),
+        customCategories: categoryId ? pick(customCategories) : customCategories } }
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `geometra-catalogue-backup-${categoryId ?? 'all'}-${payload.exportedAt.slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importData = async file => {
+    let parsed
+    try { parsed = JSON.parse(await file.text()) } catch { alert('This file is not valid JSON.'); return }
+    const data = parsed?.data
+    if (!data || typeof data !== 'object') { alert('This does not look like a GEOMETRA catalogue backup file.'); return }
+    const ids = Object.keys(data.byCategory ?? {})
+    if (!confirm(
+      `Import ${ids.length ? ids.join(', ') : 'this backup'} into THIS browser?\n\n` +
+      'Each catalogue IN THE FILE is fully replaced by what the file holds. Any ' +
+      'OTHER catalogue already in this browser is left exactly as it is. This cannot be undone.'
+    )) return
+    setBusy('Importing…')
+    try {
+      await importAll(data)
+      setByCategory(prev => ({ ...prev, ...data.byCategory }))
+      setChromeByCategory(prev => ({ ...prev, ...data.chromeByCategory }))
+      setAcceptedByCategory(prev => ({ ...prev, ...data.acceptedByCategory }))
+      setDeletedCategories(prev => ({ ...prev, ...data.deletedCategories }))
+      setCustomCategories(prev => ({ ...prev, ...data.customCategories }))
+      setShowDashboard(true)
+      setSidebarOpen(false)
+      setBusy('')
+    } catch (e) {
+      setBusy(`Import failed: ${e.message}`)
+    }
+  }
+
   const move = (id, dir) => {
     setProducts(prev => {
       const list = category.order(prev)
@@ -644,6 +699,8 @@ export default function App() {
             onImport={(id, explicit = true) => { setImportCategoryId(explicit && id ? id : null); setTargetChosen(Boolean(explicit) && Boolean(id)); setIngesting(true) }}
             onExportAll={exportAll}
             onResetAll={resetDemo}
+            onExportData={exportData}
+            onImportData={importData}
             filledCount={filledCount}
           />
         ) : products.length > 0 ? (
