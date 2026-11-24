@@ -33,6 +33,7 @@ export default function PublicSite() {
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
   const [botEnabled, setBotEnabled] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
     fetch(apiUrl('/api/ai/status')).then(r => r.json()).then(s => setBotEnabled(Boolean(s.publicCatalogueEdit))).catch(() => {})
@@ -94,17 +95,37 @@ export default function PublicSite() {
 
   const header = (
     <header className="ps-header">
-      <a className="ps-brand" href="?" style={{ textDecoration: 'none', color: 'inherit' }}>
-        <b>GEOMETRA</b><span>Catalogues</span>
-      </a>
+      <div className="ps-header-left">
+        <a className="ps-brand" href="?" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <b>GEOMETRA</b><span>Catalogues</span>
+        </a>
+        <button type="button" className="ps-help-btn" onClick={() => setHelpOpen(true)}>HELP (ADMIN)</button>
+      </div>
       {id && <a className="ps-back" href="?">&larr; All catalogues</a>}
     </header>
   )
+
+  // The help panel's CONTENT is a placeholder on purpose — the wording is
+  // still to be supplied. Only the text inside the ps-help-body div should change.
+  const helpPanel = helpOpen ? (
+    <div className="ps-help-overlay" onClick={() => setHelpOpen(false)}>
+      <div className="ps-help-panel" onClick={e => e.stopPropagation()}>
+        <div className="ps-help-head">
+          <h2>Help (admin)</h2>
+          <button type="button" className="ps-help-close" onClick={() => setHelpOpen(false)} aria-label="Close help">&times;</button>
+        </div>
+        <div className="ps-help-body">
+          <p>Help content coming soon.</p>
+        </div>
+      </div>
+    </div>
+  ) : null
 
   if (error) {
     return (
       <div className="public-site">
         {header}
+        {helpPanel}
         <main className="ps-main">
           <div className="ps-state ps-state--error">
             <span className="ps-state-icon">!</span>
@@ -120,6 +141,7 @@ export default function PublicSite() {
     return (
       <div className="public-site">
         {header}
+        {helpPanel}
         <main className="ps-main">
           <div className="ps-intro">
             <h1>Our catalogues</h1>
@@ -154,6 +176,7 @@ export default function PublicSite() {
     return (
       <div className="public-site">
         {header}
+        {helpPanel}
         <main className="ps-main"><div className="ps-state"><p>Loading…</p></div></main>
       </div>
     )
@@ -162,6 +185,7 @@ export default function PublicSite() {
   return (
     <div className="public-site">
       {header}
+      {helpPanel}
       <main className="ps-main">
         <div className="ps-doc-head"><h1>{snapshot.title ?? snapshot.categoryId}</h1></div>
         {saveError && <div className="ps-state ps-state--error" style={{ marginBottom: 16 }}><p>{saveError}</p></div>}
