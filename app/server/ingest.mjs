@@ -41,7 +41,7 @@ const execFileAsync = promisify(execFile)
 // does not rerender a complex Illustrator PDF every time. The version is part
 // of the key: changing a source reader/crop rule automatically invalidates old
 // results instead of reusing a stale extraction.
-const INGEST_CACHE_VERSION = 'local-read-v10-acoustic-crops-300dpi'
+const INGEST_CACHE_VERSION = 'local-read-v11-acoustic-crops-200dpi'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
@@ -199,11 +199,11 @@ async function rejectCatalogueAiExport(pdfPath) {
 }
 
 const VISION_DPI = 150     // what Claude looks at - keeps the image within sane token cost
-// 300 DPI still gives an A4 source render roughly 2480px wide, enough for
-// readable drawings and clean product crops. 400 DPI multiplied the pixels
-// without improving the measured source boxes, and made every known upload
-// render-heavy on the small live server.
-const ASSET_DPI = 300
+// 200 DPI gives an A4 source render roughly 1650px wide, enough for the
+// measured product crops and dimension drawings. 300/400 DPI multiplied the
+// pixels without improving the source boxes, and made known uploads render
+// heavily on the small live server.
+const ASSET_DPI = 200
 const MAX_PAGES = 12
 // pdftoppm is single-threaded per page; rendering pages one at a time left every
 // core but one idle for the whole import. Capped below the full core count so the
