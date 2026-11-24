@@ -73,4 +73,17 @@ const repairedAgain = repairLegacyAccessoriesProducts('accessories', repaired)
 assert.deepEqual(repairedAgain[0].finishes.map(variant => variant.name), ['5mm', '8mm'])
 assert.equal(repairedAgain[0].third, 'Thickness : 5mm / 8mm / Carbon Crystal')
 
+// A fresh March import may include the stray "Led -160 New" row. It must be
+// removed before source-page numbering is trusted, otherwise page 3 repairs
+// target the wrong records and the whole catalogue shifts.
+const ledNames = ['Led -160', 'Led - 160 New', 'Led -170', 'Led -195', 'Led - 508', 'Led -15', 'Corner Led 601', 'Led - 08']
+const ledRows = ledNames.map((name, index) => ({
+  id: `led-${index}`, categoryId: 'accessories', sourcePage: 1, name,
+  photo: `photo-${index}`, drawing: `drawing-${index}`,
+  ...(name === 'Led - 08' ? { finishes: [{ name: 'Black', photo: 'black', drawing: 'led08' }] } : {}),
+}))
+const repairedLedRows = repairLegacyAccessoriesProducts('accessories', ledRows)
+assert.deepEqual(repairedLedRows.map(product => product.name), ['Led -160', 'Led -170', 'Led -195', 'Led - 508', 'Led -15', 'Corner Led 601', 'Led - 08'])
+assert.equal(repairedLedRows.length, 7)
+
 console.log('Accessories March structure: 37 products, page 6 kept as two products, saved-catalogue repair OK')

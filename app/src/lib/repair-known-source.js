@@ -86,18 +86,22 @@ function repairCarbonCrystalProfileRows(products) {
   return changed ? repaired : products
 }
 
-// The saved March import once shifted the LED rows: "Led -160 New" replaced
-// the source's Led -15 card and every following card moved up. This is a very
-// specific seven-row source signature, so repair the records in place (keeping
-// their stable IDs) instead of inserting/deleting arbitrary products.
+// The saved March import can contain a stray "Led -160 New" row between the
+// genuine LED cards. That single false product shifts every later source row,
+// so repair the complete page-1 signature in place (keeping genuine stable IDs)
+// instead of letting page-specific repairs miss their anchors.
 function repairMarch2026LedRows(products) {
-  const first = products.slice(0, 7)
-  const actual = first.map(product => normal(product?.name))
-  const broken = ['led -160', 'led - 160 new', 'led -170', 'led -195', 'led - 508', 'corner led 601', 'led - 08']
-  if (first.length !== 7 || !broken.every((name, index) => actual[index] === name)) return products
+  const start = products.findIndex(product => Number(product?.sourcePage) === 1)
+  if (start < 0 || start > 1) return products
+  let end = start
+  while (end < products.length && Number(products[end]?.sourcePage) === 1) end++
+  const sourceRows = products.slice(start, end)
+  const genuine = sourceRows.filter(product => normal(product?.name) !== 'led - 160 new')
+  const expected = SEED.map(product => normal(product.name))
+  const actual = genuine.map(product => normal(product?.name))
+  if (genuine.length !== SEED.length || !expected.every((name, index) => actual[index] === name)) return products
   let changed = false
-  const repaired = products.map((product, index) => {
-    if (index >= 7) return product
+  const repairedRows = genuine.map((product, index) => {
     const source = SEED[index]
     if (!source) return product
     const next = {
@@ -120,7 +124,8 @@ function repairMarch2026LedRows(products) {
     if (JSON.stringify(next) !== JSON.stringify(product)) changed = true
     return next
   })
-  return changed ? repaired : products
+  if (!changed && genuine.length === sourceRows.length) return products
+  return [...products.slice(0, start), ...repairedRows, ...products.slice(end)]
 }
 
 // Page 3 is CORNER, L (15mm/20mm white exceptions), L. A legacy saved import
@@ -407,6 +412,23 @@ const knownVariation = product => {
     (product.sourcePage === 5 && name === 'corner profile')
 }
 
+const reviewedVariationPaths = (product, index) => {
+  const page = Number(product?.sourcePage)
+  if (![4, 5].includes(page)) return null
+  const name = normal(product?.name)
+  const variationKey = page === 4
+    ? (name === 'i profile' ? 'i-profile' : name === 'end profile' ? 'end-profile' : null)
+    : name === 'corner profile' ? 'corner' : null
+  if (!variationKey) return null
+  const mm = ['5mm', '8mm'][index]
+  const prefix = page === 4 ? `page4-${variationKey}-${mm}` : `corner-${mm}`
+  const version = page === 4 ? '2026-11-24-page4-variation-assets' : '2026-11-24-page5-variation-assets'
+  return {
+    photo: `/assets/source/accessories-march-2026/${prefix}-photo.png?v=${version}`,
+    drawing: `/assets/source/accessories-march-2026/${prefix}-drawing.png?v=${version}`,
+  }
+}
+
 // Repair the already-saved March 2026 catalogue without asking for another
 // upload. This is deliberately source/page-specific: repeated names elsewhere
 // may be real products and must not be merged by guesswork.
@@ -437,6 +459,28 @@ function repairMarch2026Variations(products) {
         name: expected[index] ?? finish.name,
         third: finish.third || `Thickness : ${expected[index] ?? ''} / Carbon Crystal`,
       }))
+      // Re-imports may carry the old rendered row crop in each variation. The
+      // reviewed source assets are the authoritative product-only rectangles;
+      // restore them before pagination so every variation has the right photo
+      // and complete dimension drawing.
+      const reviewed = finishes.map((finish, index) => {
+        const paths = reviewedVariationPaths(current, index)
+        if (!paths) return finish
+        const { photo, drawing } = paths
+        if (finish.photo === photo && finish.drawing === drawing) return finish
+        changed = true
+        return {
+          ...finish,
+          photo,
+          photoOriginal: finish.photoOriginal ?? finish.photo,
+          sourcePhotoBackup: finish.sourcePhotoBackup ?? finish.photo,
+          drawing,
+          drawingOriginal: finish.drawingOriginal ?? finish.drawing,
+          sourceDrawingBackup: finish.sourceDrawingBackup ?? finish.drawing,
+          sourceRestoredFromPdf: true,
+        }
+      })
+      finishes = reviewed
       // If an old reconcile duplicated the cleaned CORNER photo but retained
       // distinct source originals, restore those originals rather than showing
       // the same 8mm product for both thicknesses.
@@ -520,13 +564,26 @@ function repairMarch2026Variations(products) {
         ? '/assets/source/accessories-march-2026/aluminum-end-bend-features.png?v=2026-11-02-page6-clean'
         : current.supportStrip,
       finishes: members.map((member, index) => ({
+        ...(() => {
+          const paths = reviewedVariationPaths(current, index)
+          if (paths && (member.photo !== paths.photo || member.drawing !== paths.drawing)) changed = true
+          return paths ? {
+            photo: paths.photo,
+            drawing: paths.drawing,
+            photoOriginal: member.photoOriginal ?? member.photo,
+            sourcePhotoBackup: member.sourcePhotoBackup ?? member.photo,
+            drawingOriginal: member.drawingOriginal ?? member.drawing,
+            sourceDrawingBackup: member.sourceDrawingBackup ?? member.drawing,
+            sourceRestoredFromPdf: true,
+          } : {}
+        })(),
         id: `${current.id}-thickness-${thickness(member) || index + 1}`,
         name: thickness(member) || ['5mm', '8mm'][index] || `Variation ${index + 1}`,
-        photo: member.photo ?? null,
-        photoOriginal: member.photoOriginal ?? null,
+        photo: reviewedVariationPaths(current, index)?.photo ?? member.photo ?? null,
+        photoOriginal: reviewedVariationPaths(current, index)?.photo ? (member.photoOriginal ?? member.photo) : (member.photoOriginal ?? null),
         photoDisplayBackground: member.photoDisplayBackground,
-        drawing: member.drawing ?? null,
-        drawingOriginal: member.drawingOriginal ?? null,
+        drawing: reviewedVariationPaths(current, index)?.drawing ?? member.drawing ?? null,
+        drawingOriginal: reviewedVariationPaths(current, index)?.drawing ? (member.drawingOriginal ?? member.drawing) : (member.drawingOriginal ?? null),
         third: member.third ?? '',
         sourceBox: member.sourceBox ?? null,
         sourceDrawingBox: member.sourceDrawingBox ?? null,
