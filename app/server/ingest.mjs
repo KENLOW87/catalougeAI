@@ -41,7 +41,7 @@ const execFileAsync = promisify(execFile)
 // does not rerender a complex Illustrator PDF every time. The version is part
 // of the key: changing a source reader/crop rule automatically invalidates old
 // results instead of reusing a stale extraction.
-const INGEST_CACHE_VERSION = 'local-read-v9-acoustic-page4-5-photo-crops'
+const INGEST_CACHE_VERSION = 'local-read-v10-acoustic-crops-300dpi'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
@@ -199,7 +199,11 @@ async function rejectCatalogueAiExport(pdfPath) {
 }
 
 const VISION_DPI = 150     // what Claude looks at - keeps the image within sane token cost
-const ASSET_DPI = 400      // what we actually cut the assets from
+// 300 DPI still gives an A4 source render roughly 2480px wide, enough for
+// readable drawings and clean product crops. 400 DPI multiplied the pixels
+// without improving the measured source boxes, and made every known upload
+// render-heavy on the small live server.
+const ASSET_DPI = 300
 const MAX_PAGES = 12
 // pdftoppm is single-threaded per page; rendering pages one at a time left every
 // core but one idle for the whole import. Capped below the full core count so the
@@ -329,7 +333,7 @@ const sortByPage = (files, dir) => files
 
 async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, shouldStop = () => false) {
   // One pdftoppm call per page, on purpose — a single call over the whole PDF says
-  // NOTHING until every page is done, minutes of silence at 400 DPI, long enough for
+  // NOTHING until every page is done, minutes of silence at high DPI, long enough for
   // the client to abandon the request while the server was still working perfectly.
   // Per-page calls keep the progress stream moving.
   //
@@ -408,7 +412,7 @@ function cutSourcePhotoAsset(page, box, { exact = false } = {}) {
 
 /**
  * Prefer the original embedded PDF image for a locally-read product photo.
- * The reader measured its field in the 400-DPI page, while Poppler reports
+ * The reader measured its field in the asset-DPI page, while Poppler reports
  * native image coordinates in its own XML page units, so the matcher handles
  * the conversion and rejects ambiguous/background objects. If anything is
  * uncertain, the existing source crop stays untouched.
@@ -779,7 +783,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
 
     // Known layouts keep their verified high-resolution source render.  For a
     // new/unknown PDF, do one 150 DPI render only: the old path rendered the
-    // entire document at 400 DPI and then rendered it again at 150 DPI, while
+    // entire document at asset DPI and then rendered it again at 150 DPI, while
     // also walking every embedded image.  That made a normal upload wait for
     // three expensive readers before the first product could be reviewed.
     //
@@ -803,7 +807,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
       renderPages(pdfPath, dir, renderDpi, 'a', onProgress, shouldStop),
     ])
     // The single render above is enough for both local geometry and the AI
-    // reader. Known source layouts therefore keep their 400 DPI crops, while
+    // reader. Known source layouts therefore keep their high-resolution crops, while
     // generic layouts avoid a second full-document render entirely.
     const visionPages = assetPages
 
@@ -904,7 +908,7 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
             // import be routed to the right catalogue instead of landing in whichever
             // one happened to be open.
             //
-            // Read at vision resolution: the 400 DPI band is four times the pixels
+            // Read at vision resolution: the high-resolution band is larger than the
             // for no extra accuracy on text this large, and OCR is the slow step.
             try {
               const vis = readImage(visionPages[i])
