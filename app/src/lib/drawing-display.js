@@ -1,5 +1,7 @@
 // Presentation-only crop: retain the saved original and every measurement pixel.
 // Ignore isolated long separator slivers which came from an adjacent PDF panel.
+import { loadImageForCanvas } from './load-image.js'
+
 export function drawingContentBounds(width, height, pixels) {
   const ink = new Uint8Array(width * height)
   for (let p = 0; p < ink.length; p++) {
@@ -36,12 +38,7 @@ export function drawingContentBounds(width, height, pixels) {
 }
 
 export async function prepareDrawingDisplay(src) {
-  const image = await new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Drawing could not be read'))
-    img.src = src
-  })
+  const image = await loadImageForCanvas(src)
   const canvas = document.createElement('canvas')
   canvas.width = image.naturalWidth; canvas.height = image.naturalHeight
   const ctx = canvas.getContext('2d', { willReadFrequently:true })

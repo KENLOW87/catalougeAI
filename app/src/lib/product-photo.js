@@ -1,12 +1,8 @@
 import { apiUrl } from './api.js'
 import { activityHeaders } from './activity.js'
+import { loadImageForCanvas } from './load-image.js'
 
-const readImage = src => new Promise((resolve, reject) => {
-  const image = new Image()
-  image.onload = () => resolve(image)
-  image.onerror = () => reject(new Error('Gambar tidak dapat dibaca.'))
-  image.src = src
-})
+const readImage = src => loadImageForCanvas(src).catch(() => { throw new Error('Gambar tidak dapat dibaca.') })
 
 // Measure only the opaque product, never the old background. Crop transparent
 // margins so the product occupies its frame without stretching its proportions.

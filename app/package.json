@@ -20,6 +20,8 @@
     "test:block-anchors": "node server/test-block-anchor-splitting.mjs",
     "test:light-stone": "node server/test-light-stone-source.mjs",
     "test:publish-all": "node server/test-publish-all.mjs",
+    "test:publish": "node server/test-publish.mjs",
+    "test:publish-supabase": "node server/test-publish-supabase.mjs",
     "test:reconcile": "node server/test-reconcile.mjs",
     "test:reimport": "node server/e2e-reimport.mjs",
     "test:export-all": "node server/test-export-all.mjs",

@@ -2,12 +2,9 @@
 // This does not try to decide what the product is. It only checks measurable
 // failure signatures before an automatic background-removal result is accepted.
 
-const loadImage = source => new Promise((resolve, reject) => {
-  const image = new Image()
-  image.onload = () => resolve(image)
-  image.onerror = () => reject(new Error('Image quality check could not read the image'))
-  image.src = source
-})
+import { loadImageForCanvas } from './load-image.js'
+
+const loadImage = loadImageForCanvas
 
 const pixelsOf = (image, maxSide = 192) => {
   const scale = Math.min(1, maxSide / Math.max(image.width, image.height))

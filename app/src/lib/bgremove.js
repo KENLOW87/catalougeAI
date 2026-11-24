@@ -12,6 +12,7 @@
 // full-precision file WebGPU auto-selection could otherwise reach for.
 
 import { pipeline } from '@huggingface/transformers'
+import { loadImageForCanvas } from './load-image.js'
 
 const MODEL = 'onnx-community/ormbg-ONNX'
 
@@ -30,12 +31,7 @@ const load = () => {
 /** True once the model has loaded — lets the UI say "loading…" only the first time. */
 export const modelReady = () => ready
 
-const readImage = dataUrl => new Promise((resolve, reject) => {
-  const image = new Image()
-  image.onload = () => resolve(image)
-  image.onerror = () => reject(new Error('The image could not be read'))
-  image.src = dataUrl
-})
+const readImage = loadImageForCanvas
 
 /**
  * White/light product photos are already catalogue-ready. Running segmentation

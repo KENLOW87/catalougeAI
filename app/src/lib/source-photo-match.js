@@ -1,8 +1,8 @@
+import { loadImageForCanvas } from './load-image.js'
+
 const memo = new Map()
 async function pixels(src) {
-  const image = new Image()
-  image.src = src
-  await image.decode()
+  const image = await loadImageForCanvas(src)
   const ratio = Math.min(1, 160 / Math.max(image.naturalWidth, image.naturalHeight))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio))

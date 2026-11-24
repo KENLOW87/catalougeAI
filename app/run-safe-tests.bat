@@ -59,6 +59,8 @@ for %%T in (
   test-product-family-order.mjs
   test-product-layout.mjs
   test-publish.mjs
+  test-publish-all.mjs
+  test-publish-supabase.mjs
   test-recognized-source-import.mjs
   test-reconcile.mjs
   test-reflow.mjs

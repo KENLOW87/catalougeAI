@@ -7,14 +7,20 @@ services:
     healthCheckPath: /api/ai/status
     plan: free
     # The free plan cannot attach a persistent disk, so there is no `disk:`
-    # here — app/data/ (activity logs, published-catalogue snapshots) lives on
-    # the container's writable layer and is wiped every time the service
-    # redeploys OR spins down from 15 minutes of no traffic (free-plan
-    # behaviour). A published catalogue only stays visible while the service
-    # stays warm; re-publish after any sleep/redeploy, or keep it warm with an
-    # external pinger (e.g. cron-job.org hitting /api/ai/status every 10 min).
-    # Upgrading to a paid plan and adding a `disk:` block here removes this
-    # limitation entirely.
+    # here — anything written under app/ lives on the container's writable
+    # layer and is wiped every time the service redeploys OR spins down from 15
+    # minutes of no traffic (free-plan behaviour).
+    #
+    # PUBLISHED CATALOGUES no longer care: with SUPABASE_URL and
+    # SUPABASE_SERVICE_ROLE_KEY set below, they are stored in Supabase rather
+    # than on this disk, so they survive both. That was the "catalogue keeps
+    # disappearing from the live site" bug. Leave either variable unset and the
+    # server silently falls back to on-disk files and the bug comes straight
+    # back.
+    #
+    # Activity/usage logs (app/data/activity/) are still on the writable layer
+    # and are still lost on redeploy and spin-down. Download anything worth
+    # keeping before a redeploy.
     envVars:
       - key: PORT
         value: 10000
@@ -23,6 +29,14 @@ services:
       - key: APP_URL
         sync: false
       - key: ADMIN_PASSWORD
+        sync: false
+      # Durable storage for published catalogues. Set both in the Render
+      # dashboard, never here: the service_role key bypasses row-level security
+      # and is a server-only secret. Project Settings > Data API > Project URL,
+      # and Project Settings > API Keys > service_role.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false

@@ -12,6 +12,7 @@ import { DISPLAY_INTENT_GUIDANCE, CONVERSATION_GUIDANCE, IMAGE_PAGE_POSITION_GUI
 import { BOT_CAPABILITY_GUIDANCE } from '../src/lib/bot-capabilities.js'
 import { installActivity } from './activity.mjs'
 import { installPublish } from './publish.mjs'
+import { isConfigured as publishStorageConfigured } from './supabase-store.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 if (existsSync(join(__dirname, '../.env'))) loadEnvFile(join(__dirname, '../.env'))
@@ -324,7 +325,12 @@ app.post('/api/interpret', async (req, res) => {
   }
 })
 
-app.get('/api/ai/status', (_req, res) => res.json({ openai: Boolean(process.env.OPENAI_API_KEY), ready: Boolean(process.env.OPENAI_API_KEY || hasCredentials()), publicCatalogueEdit: PUBLIC_CATALOGUE_EDIT }))
+// publishStorage says where a published catalogue actually goes. It matters
+// because the fallback is silent: with no Supabase credentials the server still
+// publishes happily, to a container disk that Render wipes on every redeploy
+// and every idle spin-down, and the catalogue quietly vanishes from the live
+// site hours later. "files" in production means that bug is back.
+app.get('/api/ai/status', (_req, res) => res.json({ openai: Boolean(process.env.OPENAI_API_KEY), ready: Boolean(process.env.OPENAI_API_KEY || hasCredentials()), publicCatalogueEdit: PUBLIC_CATALOGUE_EDIT, publishStorage: publishStorageConfigured() ? 'supabase' : 'files' }))
 app.post('/api/image/edit', async (req, res) => {
   try {
     const image = await editProductImage(req.body?.image, req.body?.instruction, { productOnly: req.body?.productOnly === true })
