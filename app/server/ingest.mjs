@@ -787,14 +787,17 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // image order has no reliable page coordinates in many Illustrator PDFs
     // and was the cause of wrong product photos being attached.  Known source
     // readers may still opt into their trusted native pass below.
-    // Carbon Crystal's source rectangles are authoritative. Its Illustrator
-    // file contains hundreds of repeated embedded raster objects, so walking
-    // the native-image tree is slower than rendering the page and can attach a
-    // neighbouring finish. Skip that redundant pass for this trusted profile;
-    // preferNativePhotos() already keeps the measured rendered crop.
+    // The rendered page is authoritative for every supported local reader.
+    // Scanning the embedded-image tree is both expensive (Illustrator PDFs can
+    // contain hundreds/thousands of repeated objects) and unsafe: object order
+    // and transforms are not reliable evidence of product ownership. The
+    // locally measured source boxes already produce the complete product crop,
+    // and preferNativePhotos() is deliberately called with preserveRendered
+    // for these readers. Keep the old matcher code available for recovery and
+    // explicitly opt this ingestion path out of the scan until a reader has a
+    // demonstrated need for it.
     const renderDpi = localOnlyKnownCatalogue ? ASSET_DPI : VISION_DPI
-    const allowNativeExtraction = localOnlyKnownCatalogue &&
-      !['carbon-crystal-wall', 'light-stone-wall'].includes(sourceProfile)
+    const allowNativeExtraction = false
     const [nativePages, assetPages] = await Promise.all([
       allowNativeExtraction ? extractNativePdfImages(pdfPath, dir, onProgress) : Promise.resolve([]),
       renderPages(pdfPath, dir, renderDpi, 'a', onProgress, shouldStop),
