@@ -102,9 +102,22 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null, 
   // intentionally isolated from the generic readers. Existing Wainscoting and
   // Accessories specs predate sourceProfile metadata and must keep their
   // established mixed-spec dispatch until they are migrated explicitly.
-  const sourceScopedProfiles = new Set(['carbon-crystal-wall', 'pvc-foam-board', 'pvc-marble-sheet-grid', 'pvc-marble-sheet-3d', 'acoustic-panel', 'acoustic-panel-2024'])
+  const sourceScopedProfiles = new Set([
+    'accessories-march', 'carbon-crystal-wall', 'pvc-foam-board',
+    'pvc-marble-sheet-grid', 'pvc-marble-sheet-3d', 'acoustic-panel',
+    'acoustic-panel-2024', 'light-stone-wall', 'wainscoting',
+  ])
+  // Some legacy source specs predate sourceProfile metadata. Keep their exact
+  // family prefixes as a local compatibility map, otherwise a recognised
+  // Wainscoting/Accessories/Light Stone PDF falls back to trying every reader
+  // (and running unnecessary OCR) on every page.
+  const profileSpec = {
+    'accessories-march': id => id === 'accessories-led' || id.startsWith('accessories-march-'),
+    'light-stone-wall': id => id.startsWith('light-stone-wall-'),
+    'wainscoting': id => id.startsWith('wainscoting-'),
+  }[sourceProfile]
   const availableSpecs = sourceScopedProfiles.has(sourceProfile)
-    ? BUILTIN_SPECS.filter(s => s.sourceProfile === sourceProfile)
+    ? BUILTIN_SPECS.filter(s => s.sourceProfile === sourceProfile || profileSpec?.(s.id))
     : BUILTIN_SPECS
 
   // Several known families use page 1 as cover/materials, so page number alone
