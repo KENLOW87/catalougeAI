@@ -41,7 +41,7 @@ const execFileAsync = promisify(execFile)
 // does not rerender a complex Illustrator PDF every time. The version is part
 // of the key: changing a source reader/crop rule automatically invalidates old
 // results instead of reusing a stale extraction.
-const INGEST_CACHE_VERSION = 'local-read-v8-acoustic-2024-reader'
+const INGEST_CACHE_VERSION = 'local-read-v9-acoustic-page4-5-photo-crops'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
