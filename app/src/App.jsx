@@ -95,6 +95,14 @@ export default function App() {
   const [highlight, setHighlight] = useState([])
   const [zoom, setZoom] = useState(0.62)
   const [busy, setBusy] = useState('')
+  // A publish is in flight. The status line alone was not enough: nothing stopped
+  // a second click while the first request was still running, so the same snapshot
+  // could be posted two or three times over.
+  const [publishing, setPublishing] = useState(false)
+  // What the SERVER says is live, keyed by category id. The dashboard reads this to
+  // mark each catalogue published or not; without it the only way to know was to
+  // open the public site and look.
+  const [publishedByCategory, setPublishedByCategory] = useState({})
   const [ingesting, setIngesting] = useState(false)
   // What the assistant says once an import it pointed the admin toward has
   // finished. Starting a job and then going silent about it is what made the bot
@@ -540,6 +548,24 @@ export default function App() {
     )
   }
 
+  // Ask the server what is currently published. Called on load and after every
+  // publish/unpublish, so the dashboard badges reflect the server and not what this
+  // browser happens to remember clicking. A failure here is not worth a message:
+  // the badges simply stay absent rather than claiming a false state.
+  const refreshPublished = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/published'))
+      if (!res.ok) return
+      const list = await res.json()
+      if (!Array.isArray(list)) return
+      const out = {}
+      for (const row of list) if (row?.categoryId) out[row.categoryId] = row
+      setPublishedByCategory(out)
+    } catch { /* server not reachable — show no badges */ }
+  }
+
+  useEffect(() => { if (!print) refreshPublished() }, [])
+
   // Publish every non-empty browser catalogue in one request. The server skips
   // empty entries and never deletes an older published snapshot omitted from the
   // request, so a blank catalogue cannot wipe an already published PDF.
@@ -547,7 +573,9 @@ export default function App() {
     const catalogues = catalogueList(byCategory, chromeByCategory, deletedCategories, customCategories)
       .map(c => ({ ...c, title: resolveCategory(c.category, c.chrome, customCategories).title }))
     if (!catalogues.length) { setBusy('Nothing to publish yet — no catalogue has products.'); return }
-    setBusy(`Publishing ${catalogues.length} catalogues…`)
+    if (publishing) return
+    setPublishing(true)
+    setBusy(`Publishing ${catalogues.length} catalogue${catalogues.length === 1 ? '' : 's'}…`)
     try {
       const res = await fetch(apiUrl('/api/publish-all'), {
         method: 'POST',
@@ -559,8 +587,11 @@ export default function App() {
       const skipped = body.skipped?.length ?? 0
       setBusy(`Published ${body.published?.length ?? 0} catalogue${body.published?.length === 1 ? '' : 's'} — live on the public site.` +
         (skipped ? ` Skipped ${skipped} empty catalogue${skipped === 1 ? '' : 's'}.` : ''))
+      await refreshPublished()
     } catch (e) {
       setBusy(`Publish all failed: ${e.message}`)
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -568,6 +599,8 @@ export default function App() {
   // site can show it — further edits here do not reach the public site until this
   // is pressed again. Same status-line pattern as export (`setBusy`), not a new one.
   const publishCategory = async () => {
+    if (publishing) return
+    setPublishing(true)
     setBusy(`Publishing ${category.title}…`)
     try {
       const res = await fetch(apiUrl(`/api/publish/${categoryId}`), {
@@ -577,19 +610,27 @@ export default function App() {
       })
       if (!res.ok) throw new Error(await res.text())
       setBusy(`Published ${category.title} — live on the public site.`)
+      await refreshPublished()
     } catch (e) {
       setBusy(`Publish failed: ${e.message}`)
+    } finally {
+      setPublishing(false)
     }
   }
 
   const unpublishCategory = async () => {
+    if (publishing) return
+    setPublishing(true)
     setBusy(`Unpublishing ${category.title}…`)
     try {
       const res = await fetch(apiUrl(`/api/publish/${categoryId}`), { method: 'DELETE' })
       if (!res.ok && res.status !== 404) throw new Error(await res.text())
       setBusy(`Unpublished ${category.title} — removed from the public site.`)
+      await refreshPublished()
     } catch (e) {
       setBusy(`Unpublish failed: ${e.message}`)
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -728,6 +769,9 @@ export default function App() {
             onImport={(id, explicit = true) => { setImportCategoryId(explicit && id ? id : null); setTargetChosen(Boolean(explicit) && Boolean(id)); setIngesting(true) }}
             onExportAll={exportAll}
             onPublishAll={publishAll}
+            busy={busy}
+            publishing={publishing}
+            publishedByCategory={publishedByCategory}
             onResetAll={resetDemo}
             onExportData={exportData}
             onImportData={importData}

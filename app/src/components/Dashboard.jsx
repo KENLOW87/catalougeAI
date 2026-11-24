@@ -8,7 +8,15 @@ import { runQc } from '../lib/qc.js'
 const categoryFor = (id, parent, chrome) =>
   CATEGORIES[id] ?? defaultCategoryFor(parent, chrome)
 
-export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onPublishAll, onResetAll, onExportData, onImportData, filledCount }) {
+/** "24 Nov" — short enough for a card, and never throws on a bad value. */
+const publishedWhen = iso => {
+  if (!iso) return ''
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ''
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+}
+
+export default function Dashboard({ parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories = {}, onOpen, onImport, onExportAll, onPublishAll, onResetAll, onExportData, onImportData, filledCount, busy = '', publishing = false, publishedByCategory = {} }) {
   const [showActivity, setShowActivity] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -33,6 +41,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
       const findings = runQc(products, category, acceptedByCategory[id] ?? [])
       return {
         id, parent, category, products, count: items.length, pages,
+        published: publishedByCategory[id] ?? null,
         // A catalogue can hold nothing but KEPT PAGES — a cover-only import is a
         // case the system supports on purpose. Counting only products called such a
         // catalogue "Empty" while the combined export included it, so the dashboard
@@ -42,7 +51,7 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
         warnings: findings.filter(f => f.level === 'warn').length,
       }
     })
-  }), [parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories])
+  }), [parents, byCategory, chromeByCategory, acceptedByCategory, deletedCategories, publishedByCategory])
 
   const totals = rows.reduce((out, row) => ({
     products: out.products + row.count,
@@ -66,7 +75,9 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
           <button onClick={() => setShowActivity(true)}>Aktiviti &amp; Kos</button>
           <button onClick={() => setShowHelp(true)}>Bantuan</button>
           <button onClick={() => onExportAll?.()} disabled={!filledCount}>Download all as PDF{filledCount ? ` — ${filledCount} catalogues` : ''}</button>
-          <button onClick={() => onPublishAll?.()} disabled={!filledCount}>Publish all{filledCount ? ` — ${filledCount} catalogues` : ''}</button>
+          <button onClick={() => onPublishAll?.()} disabled={!filledCount || publishing}>
+            {publishing ? 'Publishing…' : `Publish all${filledCount ? ` — ${filledCount} catalogues` : ''}`}
+          </button>
           {/* "Add catalogue" names NO destination at all. It used to preselect one —
               first a catalogue that already had products, then the first empty one —
               and either way an upload the reader could not identify was emptied into
@@ -80,6 +91,8 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
           </button>
         </div>
       </div>
+
+      {busy && <p className={`dashboard-busy ${publishing ? 'dashboard-busy--live' : ''}`} role="status">{busy}</p>}
 
       <div className="dashboard-stats">
         <div className="dashboard-stat"><b>{totals.products}</b><span>products</span></div>
@@ -103,9 +116,22 @@ export default function Dashboard({ parents, byCategory, chromeByCategory, accep
                 <h3>{row.category.title}</h3>
                 <span className="dashboard-edition">{row.category.subtitle ?? row.parent.edition}</span>
               </div>
-              <span className={`dashboard-status ${row.used ? 'dashboard-status--on' : ''}`}>
-                {row.used ? 'In use' : 'Empty'}
-              </span>
+              <div className="dashboard-card-badges">
+                <span className={`dashboard-status ${row.used ? 'dashboard-status--on' : ''}`}>
+                  {row.used ? 'In use' : 'Empty'}
+                </span>
+                {/* Published is a separate fact from "in use": a catalogue can hold
+                    products here and not be on the public site, and it can still be
+                    live from an earlier publish after being emptied here. */}
+                {row.published ? (
+                  <span className="dashboard-status dashboard-status--live"
+                        title={row.published.publishedAt ? `Published ${row.published.publishedAt}` : 'Published'}>
+                    Published{publishedWhen(row.published.publishedAt) ? ` · ${publishedWhen(row.published.publishedAt)}` : ''}
+                  </span>
+                ) : row.used ? (
+                  <span className="dashboard-status dashboard-status--off">Not published</span>
+                ) : null}
+              </div>
             </div>
             <div className="dashboard-card-metrics">
               <span><b>{row.count}</b> product{row.count === 1 ? '' : 's'}</span>
