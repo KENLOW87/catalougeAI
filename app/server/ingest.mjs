@@ -41,7 +41,10 @@ const execFileAsync = promisify(execFile)
 // does not rerender a complex Illustrator PDF every time. The version is part
 // of the key: changing a source reader/crop rule automatically invalidates old
 // results instead of reusing a stale extraction.
-const INGEST_CACHE_VERSION = 'local-read-v11-acoustic-crops-200dpi'
+// Shared import-performance version for every deterministic catalogue reader.
+// The cache must be invalidated globally when the common render path changes;
+// it is not an Acoustic-only fix.
+const INGEST_CACHE_VERSION = 'local-read-v11-source-crops-200dpi'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
