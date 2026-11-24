@@ -357,20 +357,25 @@ const PVC_MARBLE_SHEET_3D_SPECS = [
 // Acoustic Panel (August 2025) has a cover followed by four one-product
 // profile sheets.  The product shot is the small angled sample at upper left;
 // the large installed scenes below are examples and must not become products.
-const acousticPage = (page, name) => ({
+const acousticPage = (page, name, photoBox = { x: 16, y: 55, w: 50, h: 48 }) => ({
   id: `acoustic-panel-page-${page}`, title: `Acoustic Panel product page ${page}`,
   sourceProfile: 'acoustic-panel', category: 'acoustic-panel', productShape: 'generic', builtin: true,
   expectedAnchorCount: 1, anchor: { type: 'fixed', pages: [page], boxes: [{ x: 8, y: 42, w: 104, h: 115 }] },
   kinds: [{ id: `acoustic-panel-${page}-card`, fields: [
     { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: [name], box: { x: 0, y: 0, w: 1, h: 1 } },
     { key: 'subtitle', type: 'text', required: true, absolute: true, valueByAnchor: ['600mm(W) x 21mm(T) x 3000mm(L)'], box: { x: 0, y: 0, w: 1, h: 1 } },
-    { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: [{ x: 16, y: 55, w: 50, h: 48 }] },
+    { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: [photoBox] },
   ] }],
 })
 const ACOUSTIC_PANEL_SPECS = [
   { id: 'acoustic-panel-cover', title: 'Acoustic Panel cover / materials', sourceProfile: 'acoustic-panel', builtin: true, nonProductPages: [1], nonProductEvidence: { 1: [/ACOUSTIC\s+PANEL/i, /MATERIAL/i] } },
   acousticPage(2, 'WV01 Teak (Acoustic)'), acousticPage(3, 'WV02 Light Grey (Acoustic)'),
-  acousticPage(4, 'WV03 Brown (Acoustic)'), acousticPage(5, 'WV04 Black (Acoustic)'),
+  // Pages 4–5 print the product name above the sample inside the old shared
+  // rectangle. Start below that label and keep the complete sample to the
+  // bottom of the card; otherwise the catalogue renders the caption as part of
+  // the product photo and the actual sample appears half-sized.
+  acousticPage(4, 'WV03 Brown (Acoustic)', { x: 16, y: 77, w: 50, h: 26 }),
+  acousticPage(5, 'WV04 Black (Acoustic)', { x: 16, y: 77, w: 50, h: 26 }),
 ]
 
 // The older November 2024 Acoustic Panel edition is a different layout: page 2

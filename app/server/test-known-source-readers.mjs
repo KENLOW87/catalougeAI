@@ -16,6 +16,11 @@ assert.equal(pvc3d.reduce((n, s) => n + s.expectedAnchorCount, 0), 23)
 
 const acoustic = BUILTIN_SPECS.filter(s => s.sourceProfile === 'acoustic-panel' && s.expectedAnchorCount)
 assert.deepEqual(acoustic.map(s => s.expectedAnchorCount), [1, 1, 1, 1])
+const acousticPhotoBox = spec => spec.kinds[0].fields.find(f => f.key === 'photo').boxByAnchor[0]
+assert.deepEqual(acousticPhotoBox(acoustic[0]), { x: 16, y: 55, w: 50, h: 48 })
+assert.deepEqual(acousticPhotoBox(acoustic[1]), { x: 16, y: 55, w: 50, h: 48 })
+assert.deepEqual(acousticPhotoBox(acoustic[2]), { x: 16, y: 77, w: 50, h: 26 })
+assert.deepEqual(acousticPhotoBox(acoustic[3]), { x: 16, y: 77, w: 50, h: 26 })
 const acoustic2024 = BUILTIN_SPECS.filter(s => s.sourceProfile === 'acoustic-panel-2024' && s.expectedAnchorCount)
 assert.deepEqual(acoustic2024.map(s => s.expectedAnchorCount), [2])
 
