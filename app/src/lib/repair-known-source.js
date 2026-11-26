@@ -46,24 +46,23 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
 function repairMarch2026Page3Duplicate(products) {
   const start = products.findIndex((product, index) =>
     normal(product?.name) === 'corner profile' &&
+    Number(product?.sourcePage) === 3 &&
     normal(products[index + 1]?.name) === 'l profile' &&
     normal(products[index + 2]?.name) === 'l profile' &&
-    normal(products[index + 3]?.name) === 'l profile')
+    normal(products[index + 3]?.name) === 'l profile' &&
+    Number(products[index + 1]?.sourcePage) === 3 &&
+    Number(products[index + 2]?.sourcePage) === 3 &&
+    Number(products[index + 3]?.sourcePage) === 3)
   if (start < 0) return products
 
   const rows = products.slice(start, start + 4)
-  const duplicateOffset = rows.findIndex((product, offset) =>
-    offset > 0 && normal(product?.name) === 'l profile' &&
-    (!Array.isArray(product?.variants) || product.variants.length === 0) &&
-    Array.isArray(product?.exceptions) && product.exceptions.length >= 2)
-  if (duplicateOffset < 0) return products
-
+  // The reviewed source page has exactly three logical rows. In the legacy
+  // save the second L row (the row in the middle) is the promoted White-only
+  // reference; its shape varies between imports, so do not require optional
+  // variants/exceptions metadata to identify it.
+  const duplicateOffset = 2
+  const ownerOffset = 1
   const duplicate = rows[duplicateOffset]
-  const ownerOffset = rows.findIndex((product, offset) =>
-    offset > 0 && offset !== duplicateOffset && normal(product?.name) === 'l profile' &&
-    Array.isArray(product?.variants) && product.variants.length >= 4 &&
-    Array.isArray(product?.exceptions) && product.exceptions.length >= 2)
-  if (ownerOffset < 0) return products
 
   const ownerIndex = start + ownerOffset
   const repaired = products.slice()

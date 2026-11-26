@@ -110,8 +110,7 @@ const page3Duplicate = [
   },
   {
     id: 'p14', categoryId: 'accessories', sourcePage: 3, name: 'L Profile',
-    variants: [],
-    exceptions: [{ variant: { name: 'White' }, drawing: 'duplicate-15mm' }, { variant: { name: 'White' }, drawing: 'duplicate-20mm' }],
+    photo: 'duplicate-white-photo', drawing: 'duplicate-white-drawing',
   },
   {
     id: 'p15', categoryId: 'accessories', sourcePage: 3, name: 'L Profile',
