@@ -14,12 +14,6 @@ import { repairLegacyAccessoriesProducts } from '../lib/repair-known-source.js'
 // a catalogue is a published document. One pass by a human turns a good extraction
 // into a correct one, and it costs seconds.
 
-const fileToBase64 = file => new Promise((res, rej) => {
-  const r = new FileReader()
-  r.onload = () => res(String(r.result).split(',')[1])
-  r.onerror = rej
-  r.readAsDataURL(file)
-})
 const referenceLabel = reason => ({
   'original-product-card':'Gambar produk asal',
   'dimension-reference':'Rujukan ukuran',
@@ -263,16 +257,19 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     abortRef.current = ctl
     try {
       const isImage = file.type.startsWith('image/')
-      const payload = await (isImage ? readImageFile(file) : fileToBase64(file))
-      const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest'), {
+      const payload = await (isImage ? readImageFile(file) : null)
+      const pdfUpload = !isImage
+      const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest-pdf'), {
         method: 'POST',
         signal: ctl.signal,
-        headers: { 'Content-Type': 'application/json', ...activityHeaders(jobId) },
+        headers: pdfUpload
+          ? { 'Content-Type': 'application/pdf', 'X-Catalogue-Into': importTarget ?? '', 'X-Catalogue-Filename': file.name, 'X-Upload-Bytes': String(file.size), ...activityHeaders(jobId) }
+          : { 'Content-Type': 'application/json', ...activityHeaders(jobId) },
         // `into` is the catalogue on screen: where products land when the layout
         // that read them has no category of its own.
-        body: isImage
-          ? JSON.stringify({ image: payload.split(',')[1], mime: file.type, into: importTarget ?? null, filename: file.name })
-          : JSON.stringify({ pdf: payload, into: importTarget ?? null, filename: file.name, bytes: file.size }),
+        body: pdfUpload
+          ? file
+          : JSON.stringify({ image: payload.split(',')[1], mime: file.type, into: importTarget ?? null, filename: file.name }),
       })
       if (!res.ok) {
         const type = res.headers.get('content-type') ?? ''

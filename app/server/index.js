@@ -20,8 +20,8 @@ const PORT = Number(process.env.PORT ?? 5174)
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173'
 
 const app = express()
-// PDFs are sent as base64 JSON from the browser. A 170 MB catalogue becomes
-// roughly 227 MB in transit, so the request limit must cover the encoded file.
+// JSON remains available for the older API clients, but the browser sends new
+// PDFs as application/pdf bytes so large 3D files are not expanded by base64.
 app.use(express.json({ limit: '300mb' }))
 
 // In development the editor is served by Vite on :5173 and calls this server
@@ -31,7 +31,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin ?? ''
   if (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):5173$/.test(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Activity-Job-ID,X-Activity-Origin')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Activity-Job-ID,X-Activity-Origin,X-Catalogue-Into,X-Catalogue-Filename,X-Upload-Bytes')
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204)
@@ -356,10 +356,10 @@ app.get('/api/ingest/status', (_req, res) => res.json({
 
 // Progress streams as newline-delimited JSON so the UI can say what it is doing
 // instead of sitting on a spinner for a minute.
-app.post('/api/ingest', async (req, res) => {
+const ingestHandler = async (req, res) => {
   const pdf = req.body?.pdf
-  if (typeof pdf !== 'string' || !pdf.length) {
-    return res.status(400).json({ error: 'pdf (base64) required' })
+  if (!((typeof pdf === 'string' && pdf.length) || Buffer.isBuffer(pdf))) {
+    return res.status(400).json({ error: 'PDF data required' })
   }
 
   res.setHeader('Content-Type', 'application/x-ndjson')
@@ -431,6 +431,25 @@ app.post('/api/ingest', async (req, res) => {
     clearInterval(beat)
   }
   res.end()
+}
+
+// Keep the JSON endpoint for compatibility, while the UI uses the binary route
+// below. The same handler means both paths share cancellation, cache, progress,
+// product extraction and streamed review results.
+app.post('/api/ingest', ingestHandler)
+
+app.post('/api/ingest-pdf', express.raw({ type: 'application/pdf', limit: '300mb' }), (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) {
+    return res.status(400).json({ error: 'PDF bytes required' })
+  }
+  const bytes = req.body
+  req.body = {
+    pdf: bytes,
+    into: String(req.headers['x-catalogue-into'] ?? '') || null,
+    filename: String(req.headers['x-catalogue-filename'] ?? ''),
+    bytes: Number(req.headers['x-upload-bytes']) || bytes.length,
+  }
+  return ingestHandler(req, res)
 })
 
 app.post('/api/ingest-image', async (req, res) => {

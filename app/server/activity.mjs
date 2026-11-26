@@ -84,7 +84,7 @@ export function createActivityStore(directory) {
 export function installActivity(app, { directory = fileURLToPath(new URL('../data/activity/', import.meta.url)), request = globalThis.fetch } = {}) {
   const store = createActivityStore(directory)
   const record = event => store.append(event)
-  const kinds = { '/api/ingest': 'upload.pdf', '/api/ingest-image': 'upload.image', '/api/interpret': 'bot.command', '/api/image/edit': 'image.edit' }
+  const kinds = { '/api/ingest': 'upload.pdf', '/api/ingest-pdf': 'upload.pdf', '/api/ingest-image': 'upload.image', '/api/interpret': 'bot.command', '/api/image/edit': 'image.edit' }
   app.get('/api/activity', (req, res) => {
     const date = req.query.date ?? malaysiaDate()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Use YYYY-MM-DD' })
@@ -104,7 +104,7 @@ export function installActivity(app, { directory = fileURLToPath(new URL('../dat
     const jobId = id(req.headers['x-activity-job-id']), origin = req.headers['x-activity-origin'] === 'test' ? 'test' : 'user'
     const context = { jobId, origin, record }
     // Idempotent start: the browser may already have queued the same start event.
-    record({ id: `${jobId}-server-start`, fallback: true, type: 'job.started', jobId, origin, kind: kinds[req.path], label: clean(req.body?.filename || req.body?.text || req.body?.instruction || 'Image edit'), bytes: Number(req.body?.bytes) || 0, category: clean(req.body?.into) })
+    record({ id: `${jobId}-server-start`, fallback: true, type: 'job.started', jobId, origin, kind: kinds[req.path], label: clean(req.body?.filename || req.headers['x-catalogue-filename'] || req.body?.text || req.body?.instruction || 'Image edit'), bytes: Number(req.body?.bytes || req.headers['x-upload-bytes']) || 0, category: clean(req.body?.into || req.headers['x-catalogue-into']) })
     record({ type: 'request.started', status: 'running', jobId, origin, endpoint: req.path })
     let finished = false
     const finish = status => { if (!finished) { finished = true; record({ type: 'job.status', jobId, origin, status }) } }

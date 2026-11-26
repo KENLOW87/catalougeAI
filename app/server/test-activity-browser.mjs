@@ -10,7 +10,7 @@ import { installActivity, malaysiaDate } from './activity.mjs'
 const directory = mkdtempSync(join(tmpdir(), 'catalogue-activity-browser-'))
 const originalFetch = globalThis.fetch
 const app = express(); app.use(express.json({ limit: '5mb' }))
-app.use((req,res,next) => { res.setHeader('Access-Control-Allow-Origin','http://localhost:5173'); res.setHeader('Access-Control-Allow-Headers','Content-Type,X-Activity-Job-ID,X-Activity-Origin'); res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS'); if(req.method==='OPTIONS') return res.sendStatus(204); next() })
+app.use((req,res,next) => { res.setHeader('Access-Control-Allow-Origin','http://localhost:5173'); res.setHeader('Access-Control-Allow-Headers','Content-Type,X-Activity-Job-ID,X-Activity-Origin,X-Catalogue-Into,X-Catalogue-Filename,X-Upload-Bytes'); res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS'); if(req.method==='OPTIONS') return res.sendStatus(204); next() })
 let providerCalls = 0, forbidden = 0, ledgerUnavailable = false
 const store = installActivity(app, { directory, request: async (url, options) => {
   if (!String(url).startsWith('https://api.openai.com/')) return originalFetch(url, options)
@@ -23,7 +23,7 @@ app.post('/api/interpret', async (req,res) => {
   await (await fetch('https://api.openai.com/v1/chat/completions', { method:'POST', body:JSON.stringify({ model:'gpt-4o' }) })).json()
   res.json({ kind:'answer', text:'Mock AI answer for usage audit.' })
 })
-app.post('/api/ingest', (req,res) => { res.type('application/x-ndjson').end(JSON.stringify({ done: { products:[], routing:{ filename:'usage-test.pdf' } } })+'\n') })
+for (const path of ['/api/ingest', '/api/ingest-pdf']) app.post(path, (req,res) => { res.type('application/x-ndjson').end(JSON.stringify({ done: { products:[], routing:{ filename:'usage-test.pdf' } } })+'\n') })
 const server = app.listen(0,'127.0.0.1'); await new Promise(resolve => server.once('listening',resolve))
 const mockRoot = `http://127.0.0.1:${server.address().port}`
 const browser = await puppeteer.launch({ executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true })

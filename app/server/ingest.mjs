@@ -716,7 +716,7 @@ export class IngestCancelled extends Error {
  *   and holds the one OCR worker, so an abandoned import must actually STOP —
  *   otherwise the next one queues behind work nobody is waiting for any more.
  */
-export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory = null, shouldStop = () => false, filename = '', expectedBytes = 0) {
+export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = null, shouldStop = () => false, filename = '', expectedBytes = 0) {
   // No credential check up front any more: a page in a layout the system already
   // knows is read locally and for free. The key is only needed when a page falls
   // through to the AI reader.
@@ -751,7 +751,10 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // "Command failed: pdftoppm …" with no reason attached.
     //
     // Two cheap checks, before any of the slow work:
-    const bytes = Buffer.from(pdfBase64, 'base64')
+    // The browser's binary upload path passes the bytes directly. Keep the
+    // base64 branch for older API clients, but never expand a new large PDF
+    // again after it has already arrived at the server.
+    const bytes = Buffer.isBuffer(pdfInput) ? pdfInput : Buffer.from(pdfInput, 'base64')
     if (expectedBytes && Math.abs(bytes.length - expectedBytes) > 16) {
       throw new Error(
         `The upload arrived incomplete — ${bytes.length.toLocaleString()} bytes of ` +
