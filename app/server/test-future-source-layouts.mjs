@@ -7,6 +7,25 @@ import {validateImportedAssociations} from './image-association.mjs'
 import {PNG} from 'pngjs'
 let calls=0
 globalThis.fetch=async()=>{calls++;throw new Error('Network disabled in source regression test')}
+
+// PVC Marble Sheet 3D prints one product as several labelled panels. The
+// suffix is a variation, never a separate product card.
+const threeDPages = BUILTIN_SPECS.filter(spec => /^pvc-marble-sheet-3d-page-/.test(spec.id))
+assert.equal(threeDPages.length, 9)
+for (const spec of threeDPages) {
+ const kind = spec.kinds[0]
+ const groups = kind.variantGroupByAnchor
+ const labels = kind.variantLabelByAnchor
+ assert.ok(Array.isArray(groups) && groups.length === spec.expectedAnchorCount, `${spec.id} variation groups`)
+ assert.equal(new Set(groups).size, 1, `${spec.id} panels share one product group`)
+ assert.deepEqual(labels.map(label => label.replace(/[A-Z]$/i, '')), groups, `${spec.id} keeps printed variation labels`)
+}
+const blank3dPage = new PNG({width: 2100, height: 3000})
+blank3dPage.data.fill(255)
+const grouped3d = await readWithSpec(blank3dPage, {...threeDPages[0], anchor: {...threeDPages[0].anchor, pageNo: 2}})
+assert.equal(grouped3d.products.length, 1, '3D-1A and 3D-1B are one product')
+assert.equal(grouped3d.products[0].variantTechnical, true)
+assert.deepEqual(grouped3d.products[0].finishes.map(variation => variation.name), ['3D-1A', '3D-1B'])
 for(const [id,pageNo,counts] of [
  ['wainscoting-flat-bar-display',3,[1]],
  ['wainscoting-mirror-cards',8,[2,1,1]],

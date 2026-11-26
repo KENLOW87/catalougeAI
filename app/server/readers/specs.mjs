@@ -321,14 +321,17 @@ const PVC_MARBLE_SHEET_SPECS = [
 
 // PVC Marble Sheet 3D (September 2025 / August 2026 editions) uses the same
 // one-product source page repeatedly, but the top reference image contains two
-// or three printed boards.  Split that measured reference into stable products;
-// the lower installation photo is supporting source material, not another card.
+// or three printed boards. Split the measured reference into source variations
+// of ONE product (1A/1B, 2A/2B, etc.); the lower installation photo is supporting
+// source material, not another card.
 const pvc3dPage = (page, codes, panelCount) => {
   const x = panelCount === 2 ? 40 : 11
   const w = panelCount === 2 ? 81 : 122
   const panels = Array.from({ length: panelCount }, (_, i) => ({
     x: x + (w / panelCount) * i + 0.5, y: 52, w: w / panelCount - 1, h: 98,
   }))
+  const groups = codes.map(code => String(code).replace(/[A-Z]$/i, ''))
+  const labels = codes.map(code => String(code))
   return {
     id: `pvc-marble-sheet-3d-page-${page}`,
     title: `PVC Marble Sheet 3D product page ${page}`,
@@ -337,11 +340,14 @@ const pvc3dPage = (page, codes, panelCount) => {
     productShape: 'generic', builtin: true, expectedAnchorCount: codes.length,
     anchor: { type: 'fixed', pages: [page], boxes: panels },
     kinds: [{ id: `pvc-marble-sheet-3d-${page}-cards`, fields: [
-      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: codes, box: { x: 0, y: 0, w: 1, h: 1 } },
+      // The printed A/B/C suffix identifies the variation, not a new product.
+      // Keep the full printed code as the variation label while the base code
+      // becomes the single product name in the review and catalogue.
+      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: groups, box: { x: 0, y: 0, w: 1, h: 1 } },
       { key: 'subtitle', type: 'text', required: true, absolute: true,
         valueByAnchor: codes.map(() => '1200mm(W) x 3000mm(L) x 3mm(T)'), box: { x: 0, y: 0, w: 1, h: 1 } },
       { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: panels },
-    ] }],
+    ], variantGroupByAnchor: groups, variantLabelByAnchor: labels }],
   }
 }
 
