@@ -264,6 +264,7 @@ function repairMarch2026Page11And12Assets(products) {
       sourceDrawingBackup: product.sourceDrawingBackup ?? product.drawing,
       sourcePreserved: true,
     }
+    if ((index === page7Start || index === page7Start + 1) && page !== 7) next.sourcePage = 7
     if (display && !examplesOk) {
       next.sourceExamplesBackup = product.sourceExamplesBackup ?? product.examples ?? []
       next.examples = [{ image: display, caption: 'Pemasangan T Micro-Seam', role: 'usage' }]

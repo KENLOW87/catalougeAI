@@ -108,6 +108,8 @@ const page7WithoutSourcePage = [
 const repairedPage7WithoutSourcePage = repairLegacyAccessoriesProducts('accessories', page7WithoutSourcePage)
 assert.match(repairedPage7WithoutSourcePage[0].drawing, /page7-t-micro-seam-drawing\.png\?v=2026-11-26-page7-measurement-crop/)
 assert.match(repairedPage7WithoutSourcePage[1].drawing, /page7-h-micro-seam-drawing\.png\?v=2026-11-26-page7-measurement-crop/)
+assert.equal(repairedPage7WithoutSourcePage[0].sourcePage, 7)
+assert.equal(repairedPage7WithoutSourcePage[1].sourcePage, 7)
 
 // A legacy page-3 save could promote the two White-only references belonging
 // to the first L Profile into a fourth product. Repair it without losing the
