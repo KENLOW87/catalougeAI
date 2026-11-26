@@ -221,7 +221,6 @@ function repairMarch2026Page3Profiles(products) {
 // These assets are source-specific and are safe to restore by printed page and
 // dimensions; unrelated catalogues never enter this repair path.
 function repairMarch2026Page11And12Assets(products) {
-  const version = '2026-11-16-final-source-assets'
   let changed = false
   const repaired = products.map(product => {
     const page = Number(product?.sourcePage)
@@ -237,6 +236,9 @@ function repairMarch2026Page11And12Assets(products) {
     if (page === 12 && name === 'brass flat bar - bfb 02') key = 'page12-bfb-02'
     if (page === 12 && name === 'brass flat bar - bfb 03') key = 'page12-bfb-03'
     if (!key) return product
+    const version = key.startsWith('page7-')
+      ? '2026-11-26-page7-measurement-crop'
+      : '2026-11-16-final-source-assets'
     const photo = `/assets/source/accessories-march-2026/${key}-photo.png?v=${version}`
     const drawing = `/assets/source/accessories-march-2026/${key}-drawing.png?v=${version}`
     const display = key === 'page7-t-micro-seam'

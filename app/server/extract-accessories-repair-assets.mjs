@@ -119,8 +119,11 @@ const assets = {
   'page10-l-profile-25mm-drawing.png': cutDrawingMm(page10, { x: 20, y: 227, w: 40, h: 24 }),
   'page10-l-profile-25mm-photo.png': cutMm(page10, { x: 75, y: 210, w: 130, h: 64 }),
   'page10-l-profile-25mm-display.png': cutMm(page10, { x: 14, y: 251, w: 64, h: 42 }),
-  'page7-t-micro-seam-drawing.png': cutDrawingMm(page7, { x: 15, y: 95, w: 52, h: 31 }),
-  'page7-h-micro-seam-drawing.png': cutDrawingMm(page7, { x: 25, y: 188, w: 66, h: 50 }),
+  // Keep the complete measurement lines: the old boxes clipped T's lower
+  // dimension and H's left end because the source drawing extends beyond the
+  // tight text-led crop. These boxes still stop before neighbouring text.
+  'page7-t-micro-seam-drawing.png': cutDrawingMm(page7, { x: 12, y: 93, w: 58, h: 35 }),
+  'page7-h-micro-seam-drawing.png': cutDrawingMm(page7, { x: 18, y: 184, w: 75, h: 56 }),
   // Page 11 technical drawings need a wider left margin than the old boxes:
   // the vertical measurement labels sat just outside x:20 and were reduced to
   // a bare "mm" in the saved catalogue.
