@@ -300,6 +300,19 @@ button.wide { width: 100%; }
   display: grid; place-items: center; border: 2px solid #fff;
 }
 
+/* The paid-AI confirmation. It sits ABOVE the assistant itself (z-index 60):
+   the question is about spending money, so it must not be something you can
+   click past or lose behind the chat window. */
+.bot-cost-backdrop { z-index: 70; place-items: center; }
+.bot-cost { width: min(460px, 94vw); gap: 10px; }
+.bot-cost p { margin: 0; font-size: 13px; line-height: 1.55; color: #3a4552; }
+.bot-cost-what { font-weight: 600; color: #1c2630; }
+.bot-cost-amount {
+  font-size: 15px; font-weight: 700; color: #8a4b00;
+  background: #fff6e8; border: 1px solid #f0d2a6; border-radius: 8px; padding: 10px 12px;
+}
+.bot-cost-note { color: #66707c; font-size: 12px; }
+
 .bot-dock {
   position: fixed; right: 22px; bottom: 88px; z-index: 60;
   width: 380px; max-width: calc(100vw - 44px); max-height: min(620px, calc(100vh - 130px));

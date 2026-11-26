@@ -20,6 +20,24 @@ const readFile = file => new Promise((res, rej) => {
   r.readAsDataURL(file)
 })
 
+// What ONE paid image edit costs on the OpenAI account behind this app. The
+// same figures the chat-attachment cost card already quotes — kept here so the
+// popup and that card can never drift apart. Estimates, not an invoice: the
+// Activity panel shows what was actually billed per call.
+const IMAGE_USD = [0.05, 0.10]
+const IMAGE_MYR = [0.25, 0.45]
+// Rewriting one sentence is a text call, roughly two orders of magnitude
+// cheaper — measured at USD 0.006 for a real 2.3k-token interpretation.
+const TEXT_USD = [0.005, 0.01]
+const TEXT_MYR = [0.02, 0.05]
+const money = (range, count, unit, places) =>
+  `${unit} ${(range[0] * count).toFixed(places)}–${(range[1] * count).toFixed(places)}`
+// count 0 means the text interpreter (priced per command, agreed once per
+// session); any other count is that many image edits.
+export const estimateCost = count => count === 0
+  ? `~${money(TEXT_USD, 1, 'USD', 3)} (~${money(TEXT_MYR, 1, 'RM', 2)}) setiap arahan`
+  : `~${money(IMAGE_USD, count, 'USD', 2)} (~${money(IMAGE_MYR, count, 'RM', 2)})`
+
 // The assistant: a bubble in the corner that opens a chat window.
 //
 // It does three things, in this order of preference:
@@ -56,13 +74,35 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   // display/page actions deliberately continue to use the original scene.
   const [attachment, setAttachment] = useState(null)
   const [bgBusy, setBgBusy] = useState(false)
+  // The paid-AI confirmation popup. Null means no paid call is pending; while
+  // it holds a request, the OpenAI call has NOT been sent yet — `resolve` is
+  // what sends it, and only the Proceed button calls that.
+  const [costAsk, setCostAsk] = useState(null)
   const boxRef = useRef(null)
   const inputRef = useRef(null)
   const fileRef = useRef(null)
   const lastTarget = useRef(null)
   const displayContext = useRef(null)
+  // Text interpretation is agreed to once per session, not per sentence.
+  const textAiAllowed = useRef(false)
   useEffect(() => { lastTarget.current = null }, [category?.id])
   useEffect(() => { displayContext.current = null }, [category?.id])
+
+  // Every paid OpenAI image call in this panel goes through here FIRST. It
+  // resolves true only when the user clicks Proceed in the popup, so a
+  // mistyped command, a curious visitor on the public site, or a batch over a
+  // whole catalogue can no longer spend credit before anyone sees the price.
+  // The free in-browser cutout never comes through here — it costs nothing.
+  const askToSpend = (what, count = 1) =>
+    new Promise(resolve => setCostAsk({ what, count, resolve }))
+  const answerCostAsk = answer => {
+    costAsk?.resolve(answer)
+    setCostAsk(null)
+  }
+  const declined = what => {
+    say({ who: 'bot', source: 'local',
+      text: `Dibatalkan — tiada panggilan AI dibuat dan tiada caj. ${what} tidak diubah.` })
+  }
 
   const findings = useMemo(() => runQc(items, category, accepted), [items, category, accepted])
   const summary = qcSummary(findings)
@@ -109,13 +149,23 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
           }))
           return []
         }))
+        // One price for the whole batch, asked once. Without this the user
+        // would either face one popup per photo, or — before this gate existed
+        // — spend the whole batch without being asked at all.
+        setBusy(false)
+        if (!jobs.length) { say({ who: 'bot', source: 'local', text: 'Tiada foto produk untuk diproses.' }); return }
+        if (!(await askToSpend(`Asingkan produk daripada ${jobs.length} foto katalog ini`, jobs.length))) {
+          declined('Katalog ini')
+          return
+        }
+        setBusy(true)
         say({ who: 'bot', text: `Memproses ${jobs.length} foto produk dengan AI. Drawing dan halaman penuh dikekalkan. Setiap hasil perlu disemak sebelum Apply.` })
         try {
           for (const job of jobs) {
             await presentPropose({ summary: `Asingkan produk — ${job.p.name}`, action: {
               type: 'removeBackground', ids: [job.p.id], label: job.p.name,
               value: job.value, targetKey: job.targetKey, targetItemId: job.targetItemId,
-            } }, 'ai')
+            } }, 'ai', { costConfirmed: true })
             setBusy(true)
           }
         } finally { setBusy(false) }
@@ -280,7 +330,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   // the local parser knows, or one the AI rewrote into that style. `removeBackground`
   // needs an extra step first: the photo is processed locally so the preview
   // shown IS what Apply would save, not the untouched original.
-  const presentPropose = async (propose, source) => {
+  const presentPropose = async (propose, source, { costConfirmed = false } = {}) => {
     if (['addDisplayImage', 'moveDisplayImage', 'removeDisplayImage', 'addImagePage', 'positionImagePage'].includes(propose.action?.type)) {
       // A refinement replaces the pending display plan; an older placement can
       // no longer be applied accidentally after the admin changes the instruction.
@@ -289,6 +339,16 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     }
     if (propose.action?.ids?.length) lastTarget.current = propose.action
     if (['removeBackground', 'adjustPhoto'].includes(propose.action?.type)) {
+      // Building the PREVIEW for removeBackground is itself the paid call, so
+      // the price has to be shown before the preview, not beside it. adjustPhoto
+      // is done in the browser and stays free, so it is never gated.
+      const named = items.find(p => propose.action.ids?.includes(p.id))?.name
+      const label = propose.action.label ?? named ?? propose.summary ?? 'gambar produk ini'
+      if (propose.action.type === 'removeBackground' && !costConfirmed &&
+          !(await askToSpend(`Buang latar belakang — ${label}`, 1))) {
+        declined(label)
+        return
+      }
       setBusy(true)
       try {
         const result = propose.action.type === 'adjustPhoto'
@@ -363,6 +423,17 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
     // parser already knows; running that rewrite back through parseCommand means
     // every safety rule still applies — a destructive command still waits for
     // Apply, and a product the AI got wrong is simply not found, same as today.
+    // Rewriting the wording is a paid text call too — far cheaper than an
+    // image edit, but it is still the account's money, and on the public site
+    // anyone can trigger it. Asked ONCE per session rather than per message:
+    // a popup on every unrecognised sentence would make the bot unusable.
+    if (!textAiAllowed.current && !(await askToSpend(
+      'Guna AI untuk memahami ayat bebas dalam sesi ini', 0))) {
+      say({ who: 'bot', source: 'local',
+        text: 'Tiada panggilan AI dibuat dan tiada caj. Saya masih faham arahan yang tersenarai dalam "What can I say?" — cuba guna ayat tersebut.' })
+      return
+    }
+    textAiAllowed.current = true
     setBusy(true)
     try {
       const res = await fetch(apiUrl('/api/interpret'), {
@@ -418,6 +489,10 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
   }
 
   const editAttachment = async (instruction, image) => {
+    if (!(await askToSpend(`Sunting gambar dengan AI — "${instruction}"`, 1))) {
+      declined('Gambar lampiran')
+      return
+    }
     setBusy(true)
     say({ who: 'bot', text: 'AI sedang menyunting gambar. Ini mungkin mengambil beberapa minit…' })
     try {
@@ -609,6 +684,34 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
                    placeholder="Ask, or tell me what to do…" />
             <button className="primary" type="submit" disabled={busy || !q.trim()}>Send</button>
           </form>
+        </div>
+      )}
+
+      {/* Asked BEFORE the request leaves the browser. Nothing is sent, and
+          nothing is charged, unless Proceed is clicked. */}
+      {costAsk && (
+        <div className="modal-backdrop bot-cost-backdrop" role="dialog" aria-modal="true"
+             aria-labelledby="bot-cost-title">
+          <div className="modal bot-cost">
+            <h2 id="bot-cost-title">Guna AI berbayar?</h2>
+            <p className="bot-cost-what">{costAsk.what}</p>
+            <p className="bot-cost-amount">
+              {costAsk.count === 0
+                ? `Teks sahaja · anggaran ${estimateCost(0)}`
+                : `${costAsk.count} gambar · anggaran ${estimateCost(costAsk.count)}`}
+            </p>
+            <p className="bot-cost-note">
+              Dicaj pada akaun OpenAI projek ini. Ini anggaran, bukan invois — kos sebenar
+              setiap panggilan direkod dalam panel Activity. Batal bermakna tiada panggilan
+              dan tiada caj, dan katalog tetap tidak berubah sehingga anda klik Apply pada
+              hasilnya.
+              {costAsk.count === 0 && ' Jawapan anda digunakan untuk sesi ini sahaja.'}
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => answerCostAsk(false)}>Batal</button>
+              <button className="primary" onClick={() => answerCostAsk(true)}>Proceed</button>
+            </div>
+          </div>
         </div>
       )}
 
