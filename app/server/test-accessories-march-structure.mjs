@@ -125,4 +125,13 @@ assert.ok(repairedPage3[0].variants.every(variant => /assets\/pvc\/corner-profil
 assert.ok(repairedPage3[1].variants.every(variant => /assets\/pvc\/l-profile-14-v/.test(variant.photo)))
 assert.ok(repairedPage3[2].variants.every(variant => /assets\/pvc\/l-profile-10-v/.test(variant.photo)))
 
+const legacyPage3 = [
+  ...Array.from({ length: 7 }, (_, index) => ({ id: `led-${index}`, name: `Led ${index}` })),
+  ...['H Profile', 'T Profile', 'END Profile', 'W Profile'].map(name => ({ name })),
+  ...page3Duplicate.map(({ sourcePage, ...product }) => product),
+  { id: 'p16', name: 'I Profile' },
+]
+const repairedLegacyPage3 = repairLegacyAccessoriesProducts('accessories', legacyPage3)
+assert.deepEqual(repairedLegacyPage3.slice(11, 15).map(product => product.name), ['CORNER Profile', 'L Profile', 'L Profile', 'I Profile'])
+
 console.log('Accessories March structure: 37 products, page 6 kept as two products, saved-catalogue repair OK')

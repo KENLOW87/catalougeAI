@@ -44,15 +44,19 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
 // CORNER, L (with White 15/20mm references), and L. Keep the raw mistaken row
 // attached as a recovery backup, but remove it from the rendered product list.
 function repairMarch2026Page3Duplicate(products) {
-  const start = products.findIndex((product, index) =>
-    normal(product?.name) === 'corner profile' &&
-    Number(product?.sourcePage) === 3 &&
-    normal(products[index + 1]?.name) === 'l profile' &&
-    normal(products[index + 2]?.name) === 'l profile' &&
-    normal(products[index + 3]?.name) === 'l profile' &&
-    Number(products[index + 1]?.sourcePage) === 3 &&
-    Number(products[index + 2]?.sourcePage) === 3 &&
-    Number(products[index + 3]?.sourcePage) === 3)
+  let start = -1
+  for (let index = 0; index < products.length - 3; index++) {
+    const names = products.slice(index, index + 4).map(product => normal(product?.name))
+    if (names.join('|') !== 'corner profile|l profile|l profile|l profile') continue
+    const sourcePageRun = products.slice(index, index + 4).every(product => Number(product?.sourcePage) === 3)
+    const legacySequence = index >= 4 &&
+      ['h profile', 't profile', 'end profile', 'w profile'].every((name, offset) => normal(products[index - 4 + offset]?.name) === name) &&
+      normal(products[index + 4]?.name) === 'i profile'
+    if (sourcePageRun || legacySequence) {
+      start = index
+      break
+    }
+  }
   if (start < 0) return products
 
   const rows = products.slice(start, start + 4)
