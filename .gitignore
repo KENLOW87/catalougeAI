@@ -1,6 +1,6 @@
 node_modules/
 app/dist/
-app/eng.traineddata
+eng.traineddata
 extract/
 .tmp/
 *.pdf
