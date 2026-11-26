@@ -101,7 +101,11 @@ function Cell({ p, editable, onEdit, onDelete, highlighted, supplementaryInBand 
         </div>
         {showDrawing && !technicalVariants.length && (
           <div className="dp-drawing-frame">
-            {examples.length ? <img src={p.drawing} alt="Dimension drawing" /> : <DrawingImage src={p.drawing} />}
+            {/* Every drawing uses the same presentation-only content crop,
+                including products that also have display images. The saved
+                source remains untouched; this prevents a display layout from
+                bringing back the old loose/uneven measurement margins. */}
+            <DrawingImage src={p.drawing} />
           </div>
         )}
       </div>
