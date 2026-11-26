@@ -158,6 +158,26 @@ export function sourceProfileForFilename(filename = '') {
   return null
 }
 
+// A card upload carries an explicit destination even when the supplier PDF has
+// no text layer and was renamed by WhatsApp/Downloads. In that case the
+// filename/content fingerprint cannot identify the reader, but the destination
+// is still a safe, user-selected family hint. Keep this separate from
+// sourceProfileForFilename so dashboard-neutral uploads continue to be routed by
+// their own source evidence instead of whichever catalogue was open.
+export function sourceProfileForCategory(category = '') {
+  const id = String(category).trim().toLowerCase()
+  return {
+    'accessories': 'accessories-march',
+    'pvc-marble-sheet': 'pvc-marble-sheet-grid',
+    'pvc-marble-sheet-3d': 'pvc-marble-sheet-3d',
+    'pvc-foam-board': 'pvc-foam-board',
+    'acoustic-panel': 'acoustic-panel',
+    'light-stone-wall': 'light-stone-wall',
+    'carbon-crystal-wall': 'carbon-crystal-wall',
+    'wainscoting-mirror': 'wainscoting',
+  }[id] ?? null
+}
+
 // A filename is only a hint.  Files copied from WhatsApp/Downloads are often
 // renamed, but the supplier's first pages still contain a cheap, local text
 // fingerprint.  Detect only the layouts we already have deterministic readers
@@ -729,7 +749,14 @@ export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = 
   // catalogue. The source layout remains in each product; only the destination
   // grouping is unified.
   const singleAccessoriesCatalogue = /accessories\s*\(?(?:march|mac)\b/i.test(filename)
-  let sourceProfile = sourceProfileForFilename(filename)
+  const destinationProfile = sourceProfileForCategory(intoCategory)
+  // A card upload has an explicit destination. Prefer it over a misleading
+  // renamed filename (for example a 3D file named only "PVC Marble Sheet.pdf").
+  // Dashboard-neutral uploads keep filename/PDF fingerprint routing below.
+  let sourceProfile = destinationProfile || sourceProfileForFilename(filename)
+  // This is essential for scanned/image-only PDFs: there is no text for
+  // sourceProfileForPdf() to read, and falling through would keep only whole
+  // pages (0 products) or spend paid AI on a layout already covered locally.
   let localOnlyKnownCatalogue = Boolean(sourceProfile)
   let chrome = null        // the page header, lifted from the source PDF
   let client = null
