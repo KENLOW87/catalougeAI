@@ -26,6 +26,9 @@ body {
 }
 
 .public-site { min-height: 100vh; display: flex; flex-direction: column; }
+/* One open catalogue fills exactly the viewport: the reader, not the window,
+   owns the scrolling. */
+.public-site--reader { height: 100vh; min-height: 0; overflow: hidden; }
 
 .ps-header {
   background: linear-gradient(100deg, #0f2a3d 0%, #143b52 55%, var(--ps-accent-dark) 100%);
@@ -153,33 +156,191 @@ body {
 .ps-state--error { color: #9b2c2c; background: #fff6f6; border-color: #f1caca; border-style: solid; }
 .ps-state a { color: var(--ps-accent); }
 
-/* ---- a single published catalogue's pages --------------------------------- */
+/* ---- a single published catalogue: the fitted page reader ------------------ */
 
-.ps-doc-head { margin: 0 0 24px; }
-.ps-doc-head h1 { margin: 0; font-size: 22px; font-weight: 800; }
-
-/* .cat-page is a fixed 210mm print size — reflowing its own absolutely
-   positioned, mm-based content for narrow screens risks corrupting the exact
-   approved layout. Scroll horizontally instead of resizing it, the same way a
-   PDF viewer handles a page wider than the screen. */
-.ps-pages-scroll { overflow-x: auto; padding: 4px; }
-.ps-pages { width: fit-content; margin: 0 auto; }
-/* Scoped to this wrapper only — .cat-page itself is never modified, so the
-   editor canvas and the PDF export (which never render inside .ps-pages)
-   are completely unaffected.
-   `gap` on the wrapper does nothing here: Catalogue.jsx wraps every page in
-   one shared .cat-doc, so .ps-pages only ever has that single flex child —
-   the pages themselves are plain block siblings INSIDE .cat-doc. Margin on
-   .cat-page is what actually separates them. */
-.ps-pages .cat-page {
-  box-shadow: 0 2px 10px rgba(20, 30, 40, 0.12);
-  border-radius: 2px;
-  margin-bottom: 28px;
+/* Reading a catalogue is not reading a long document: the reader owns the rest
+   of the viewport, so one sheet (or one spread) is always fully visible and the
+   visitor turns pages instead of scrolling to the bottom.
+   .cat-page is a fixed 210mm print size and is never modified here — it is
+   SCALED by a transform on .ps-reader-spread, exactly the way the editor's own
+   reader does it, so the approved layout and the PDF export are untouched. */
+.ps-main--reader {
+  max-width: 1500px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 20px;
 }
-.ps-pages .cat-page:last-child { margin-bottom: 0; }
+
+.ps-reader {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--ps-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 14px rgba(20, 30, 40, 0.07);
+  overflow: hidden;
+}
+.ps-reader:fullscreen { border: none; border-radius: 0; }
+
+/* ---- control bars -------------------------------------------------------- */
+
+.ps-reader-bar,
+.ps-reader-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fafbfc;
+  flex: none;
+}
+.ps-reader-bar { border-bottom: 1px solid var(--ps-line); flex-wrap: wrap; }
+.ps-reader-nav { border-top: 1px solid var(--ps-line); }
+
+.ps-reader-title {
+  margin: 0 auto 0 2px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ps-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-reader button {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: #2d3b47;
+  background: #fff;
+  border: 1px solid #d3dae1;
+  border-radius: 8px;
+  padding: 0 12px;
+  min-height: 34px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.ps-reader button:hover:not(:disabled) { background: #f0f5f9; border-color: #b9c6d2; }
+.ps-reader button:disabled { opacity: 0.4; cursor: default; }
+.ps-reader button.is-on {
+  background: #e7f2fa;
+  border-color: #8dc0e0;
+  color: var(--ps-accent-dark);
+  font-weight: 600;
+}
+.ps-reader .ps-reader-icon { padding: 0 10px; font-size: 14px; }
+
+/* Segmented groups: 1 page / 2 pages, and − 100% + */
+.ps-reader-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d3dae1;
+  border-radius: 999px;
+  background: #fff;
+  overflow: hidden;
+}
+.ps-reader-group button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  min-height: 32px;
+}
+.ps-reader-group button + button { border-left: 1px solid #e4e9ee; }
+.ps-reader-group button.is-on { background: #e7f2fa; }
+.ps-reader-zoom button { min-width: 34px; font-size: 15px; padding: 0 8px; }
+.ps-reader-zoom-value {
+  min-width: 48px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ps-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- the sheet itself ---------------------------------------------------- */
+
+.ps-reader-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  padding: 16px;
+  background: #eceff3;
+  overscroll-behavior: contain;
+}
+.ps-reader-stage--fit { overflow: hidden; }
+.ps-reader-size { position: relative; flex: none; margin: auto; }
+.ps-reader-spread {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  transform-origin: top left;
+  animation: ps-reader-open 0.16s ease-out;
+}
+.ps-reader-spread .cat-page {
+  flex: none;
+  background: #fff;
+  box-shadow: 0 3px 16px rgba(20, 40, 70, 0.18);
+}
+@keyframes ps-reader-open { from { opacity: 0.6; } to { opacity: 1; } }
+
+/* Page turners floating over the sheet edges, so turning a page never needs
+   the bottom bar. */
+.ps-reader-turn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  min-height: 60px;
+  padding: 0;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 10px rgba(20, 30, 40, 0.14);
+  z-index: 2;
+}
+.ps-reader-turn--prev { left: 10px; }
+.ps-reader-turn--next { right: 10px; }
+.ps-reader .ps-reader-turn:disabled { opacity: 0; pointer-events: none; }
+
+/* ---- page slider --------------------------------------------------------- */
+
+/* The assistant's bubble (PUBLIC_CATALOGUE_EDIT only) is fixed to the bottom
+   right corner, exactly where the last-page button would otherwise sit. */
+.public-site--bot .ps-reader-nav { padding-right: 80px; }
+
+.ps-reader-slider {
+  flex: 1;
+  min-width: 80px;
+  margin: 0 4px;
+  accent-color: var(--ps-accent);
+  cursor: pointer;
+}
+.ps-reader-count {
+  min-width: 74px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ps-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .ps-main--reader { padding: 14px 10px; }
+  .ps-reader-bar { justify-content: center; gap: 6px; padding: 8px 10px; }
+  .ps-reader-nav { gap: 6px; padding: 8px 10px; }
+  .ps-reader-stage { padding: 10px; }
+  /* Prev/Next keep their floating twins over the sheet, and the slider stays. */
+  .ps-reader-nav button:not(.ps-reader-icon) { display: none; }
+}
 
 @media (max-width: 600px) {
   .ps-header { padding: 14px 16px; }
   .ps-main { padding: 24px 14px 48px; }
+  .ps-main--reader { padding: 12px 8px; }
   .ps-intro h1 { font-size: 22px; }
+  .ps-reader-title { font-size: 14px; }
 }

@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import Catalogue from './Catalogue.jsx'
+import PublicReader from './PublicReader.jsx'
 import ProductDialog from './ProductDialog.jsx'
 import BotPanel from './BotPanel.jsx'
 import { resolveCategory } from '../lib/resolveCategory.js'
 import { upsertSeriesProduct } from '../lib/product-order.js'
 import { apiUrl } from '../lib/api.js'
 
-// The public face of a catalogue. `Catalogue.jsx` is rendered exactly the way
-// the admin editor and the PDF export already render it (`editable` defaults
-// to false), so the catalogue PAGES themselves can never visually drift from
-// what the admin last published.
+// The public face of a catalogue. `PublicReader.jsx` renders one fitted sheet
+// (or spread) at a time using the SAME `category.Page` the admin editor and the
+// PDF export render, read-only, so the catalogue PAGES themselves can never
+// visually drift from what the admin last published. Only the reading viewport
+// — zoom, fit, page turn, page slider — belongs to this site; a visitor no
+// longer scrolls through every page to reach the last one.
 //
 // PUBLIC_CATALOGUE_EDIT (server opt-in, off by default) additionally puts the
 // SAME "Catalogue assistant" bot here that the admin uses — add/delete
@@ -183,17 +185,12 @@ export default function PublicSite() {
   }
 
   return (
-    <div className="public-site">
+    <div className={`public-site public-site--reader ${botEnabled ? 'public-site--bot' : ''}`}>
       {header}
       {helpPanel}
-      <main className="ps-main">
-        <div className="ps-doc-head"><h1>{snapshot.title ?? snapshot.categoryId}</h1></div>
+      <main className="ps-main ps-main--reader">
         {saveError && <div className="ps-state ps-state--error" style={{ marginBottom: 16 }}><p>{saveError}</p></div>}
-        <div className="ps-pages-scroll">
-          <div className="ps-pages">
-            <Catalogue categoryId={snapshot.categoryId} category={category} products={products ?? []} />
-          </div>
-        </div>
+        <PublicReader category={category} products={products ?? []} title={snapshot.title ?? snapshot.categoryId} />
       </main>
 
       {botEnabled && (
