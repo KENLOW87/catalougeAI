@@ -334,7 +334,7 @@ const sortByPage = (files, dir) => files
   .sort((a, b) => a.n - b.n)
   .map(({ f }) => join(dir, f))
 
-async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, shouldStop = () => false) {
+async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, shouldStop = () => false, maxPages = null) {
   // One pdftoppm call per page, on purpose — a single call over the whole PDF says
   // NOTHING until every page is done, minutes of silence at high DPI, long enough for
   // the client to abandon the request while the server was still working perfectly.
@@ -344,8 +344,11 @@ async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, should
   // process on its own core — a heavy page no longer stalls every page behind it on
   // a single core while the rest of the machine sits idle.
   const count = await pageCount(pdfPath)
+  const limit = Number.isFinite(maxPages) && maxPages > 0 ? Math.floor(maxPages) : null
   if (count) {
-    const queue = Array.from({ length: count }, (_, i) => i + 1)
+    const renderCount = limit ? Math.min(count, limit) : count
+    if (renderCount < count) onProgress(`PDF has ${count} pages; reading the first ${renderCount} pages…`)
+    const queue = Array.from({ length: renderCount }, (_, i) => i + 1)
     let done = 0
     const renderOne = async () => {
       while (queue.length) {
@@ -354,7 +357,7 @@ async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, should
         await run('pdftoppm', ['-r', String(dpi), '-png', '-f', String(i), '-l', String(i),
           pdfPath, join(dir, tag)])
         done += 1
-        onProgress(`Rendered ${done} of ${count} pages at ${dpi} DPI…`)
+        onProgress(`Rendered ${done} of ${renderCount} pages at ${dpi} DPI…`)
       }
     }
     await Promise.all(
@@ -362,7 +365,8 @@ async function renderPages(pdfPath, dir, dpi, tag, onProgress = () => {}, should
   } else {
     // pdfinfo ships with pdftoppm, but a missing tool must never block an import.
     onProgress(`Rendering pages at ${dpi} DPI…`)
-    await run('pdftoppm', ['-r', String(dpi), '-png', pdfPath, join(dir, tag)])
+    const range = limit ? ['-f', '1', '-l', String(limit)] : []
+    await run('pdftoppm', ['-r', String(dpi), ...range, '-png', pdfPath, join(dir, tag)])
   }
   const files = (await readdir(dir)).filter(f => f.startsWith(tag) && f.endsWith('.png'))
   return sortByPage(files, dir)
@@ -803,11 +807,17 @@ export async function ingestPdf(pdfBase64, onProgress = () => {}, intoCategory =
     // for these readers. Keep the old matcher code available for recovery and
     // explicitly opt this ingestion path out of the scan until a reader has a
     // demonstrated need for it.
-    const renderDpi = localOnlyKnownCatalogue ? ASSET_DPI : VISION_DPI
+    // The 3D sheet reader uses fixed source rectangles and no vision fallback;
+    // 150 DPI is enough for those panel crops and avoids rendering large product
+    // pages at the heavier asset resolution. Other deterministic catalogues keep
+    // the reviewed 200 DPI source quality.
+    const renderDpi = sourceProfile === 'pvc-marble-sheet-3d'
+      ? VISION_DPI
+      : (localOnlyKnownCatalogue ? ASSET_DPI : VISION_DPI)
     const allowNativeExtraction = false
     const [nativePages, assetPages] = await Promise.all([
       allowNativeExtraction ? extractNativePdfImages(pdfPath, dir, onProgress) : Promise.resolve([]),
-      renderPages(pdfPath, dir, renderDpi, 'a', onProgress, shouldStop),
+      renderPages(pdfPath, dir, renderDpi, 'a', onProgress, shouldStop, MAX_PAGES),
     ])
     // The single render above is enough for both local geometry and the AI
     // reader. Known source layouts therefore keep their high-resolution crops, while
