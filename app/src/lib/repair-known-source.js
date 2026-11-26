@@ -221,14 +221,21 @@ function repairMarch2026Page3Profiles(products) {
 // These assets are source-specific and are safe to restore by printed page and
 // dimensions; unrelated catalogues never enter this repair path.
 function repairMarch2026Page11And12Assets(products) {
+  // Some older saves lost sourcePage while the Accessories category was
+  // merged. Page 7 remains unambiguous in source order: T Micro-Seam is
+  // immediately followed by H Micro-Seam. Keep this fallback local to these
+  // exact names so an old save receives the same reviewed assets on load.
+  const page7Start = products.findIndex((product, index) =>
+    normal(product?.name) === 't micro-seam aluminium black' &&
+    normal(products[index + 1]?.name) === 'h micro-seam aluminium silver')
   let changed = false
-  const repaired = products.map(product => {
+  const repaired = products.map((product, index) => {
     const page = Number(product?.sourcePage)
     const name = normal(product?.name)
     const subtitle = String(product?.subtitle ?? '')
     let key = null
-    if (page === 7 && name === 't micro-seam aluminium black') key = 'page7-t-micro-seam'
-    if (page === 7 && name === 'h micro-seam aluminium silver') key = 'page7-h-micro-seam'
+    if ((page === 7 || index === page7Start) && name === 't micro-seam aluminium black') key = 'page7-t-micro-seam'
+    if ((page === 7 || index === page7Start + 1) && name === 'h micro-seam aluminium silver') key = 'page7-h-micro-seam'
     if (page === 11 && name === 'u channel profile (b)' && /20\s*mm\s*x\s*3000/i.test(subtitle)) key = 'page11-u-channel-20mm'
     if (page === 11 && name === 'u channel profile (b)' && /10\s*mm\s*x\s*3000/i.test(subtitle)) key = 'page11-u-channel-10mm'
     if (page === 11 && name === 'wing flat bar') key = 'page11-wing-flat-bar'

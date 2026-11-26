@@ -98,6 +98,17 @@ const flatBarRows = [20, 25, 30, 80].map((width, index) => ({
 const repairedFlatBars = repairLegacyAccessoriesProducts('accessories', flatBarRows)
 assert.ok(repairedFlatBars.every(product => /page8-measurements-clean/.test(product.drawing)), 'page 8 must use the clean measurement assets')
 
+// Existing browser saves from before sourcePage was persisted must still pick
+// up the reviewed page-7 crops on load. The exact adjacent T/H names are the
+// local source-order anchor; no paid reader or filename guess is involved.
+const page7WithoutSourcePage = [
+  { id: 't7', categoryId: 'accessories', name: 'T Micro-Seam Aluminium Black', photo: 'old-t-photo', drawing: 'old-t-drawing' },
+  { id: 'h7', categoryId: 'accessories', name: 'H Micro-Seam Aluminium Silver', photo: 'old-h-photo', drawing: 'old-h-drawing' },
+]
+const repairedPage7WithoutSourcePage = repairLegacyAccessoriesProducts('accessories', page7WithoutSourcePage)
+assert.match(repairedPage7WithoutSourcePage[0].drawing, /page7-t-micro-seam-drawing\.png\?v=2026-11-26-page7-measurement-crop/)
+assert.match(repairedPage7WithoutSourcePage[1].drawing, /page7-h-micro-seam-drawing\.png\?v=2026-11-26-page7-measurement-crop/)
+
 // A legacy page-3 save could promote the two White-only references belonging
 // to the first L Profile into a fourth product. Repair it without losing the
 // original mistaken record, then restore the three reviewed PVC source rows.
