@@ -12,6 +12,10 @@ const page8PhotoBoxes = page8.kinds[0].fields.find(field => field.key === 'photo
 assert.deepEqual(page8PhotoBoxes.map(box => [box.x, box.y, box.w]), [
   [87, 0, 123], [87, 0, 123], [87, 0, 123], [87, 0, 123],
 ], 'page 8 photos stay in the right-hand source column')
+const page8DrawingBoxes = page8.kinds[0].fields.find(field => field.key === 'drawing').boxByAnchor
+assert.deepEqual(page8DrawingBoxes.map(box => [box.x, box.y, box.w]), [
+  [40, 0, 25], [40, 0, 29], [40, 0, 36], [40, 0, 42],
+], 'page 8 measurements stay in the left source column')
 
 let profileProducts = 0
 for (const spec of specs) {
@@ -85,5 +89,13 @@ const ledRows = ledNames.map((name, index) => ({
 const repairedLedRows = repairLegacyAccessoriesProducts('accessories', ledRows)
 assert.deepEqual(repairedLedRows.map(product => product.name), ['Led -160', 'Led -170', 'Led -195', 'Led - 508', 'Led -15', 'Corner Led 601', 'Led - 08'])
 assert.equal(repairedLedRows.length, 7)
+
+const flatBarRows = [20, 25, 30, 80].map((width, index) => ({
+  id: `flat-${width}`, categoryId: 'accessories', sourcePage: 8,
+  name: 'Flat Bar', subtitle: `Size : ${width}mm x 3000mm`,
+  photo: `old-photo-${index}`, drawing: `old-drawing-${index}`,
+}))
+const repairedFlatBars = repairLegacyAccessoriesProducts('accessories', flatBarRows)
+assert.ok(repairedFlatBars.every(product => /page8-measurements-clean/.test(product.drawing)), 'page 8 must use the clean measurement assets')
 
 console.log('Accessories March structure: 37 products, page 6 kept as two products, saved-catalogue repair OK')

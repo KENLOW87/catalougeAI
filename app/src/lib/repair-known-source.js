@@ -289,10 +289,10 @@ function splitMarch2026EndBendProducts(products) {
 function repairMarch2026FlatBarDrawings(products) {
   let changed = false
   const repaired = products.map(product => {
-    if (product?.sourcePage !== 8 || normal(product.name) !== 'flat bar') return product
+    if (Number(product?.sourcePage) !== 8 || normal(product.name) !== 'flat bar') return product
     const width = String(product.subtitle ?? '').match(/(20|25|30|80)\s*mm/i)?.[1]
     if (!width) return product
-    const drawing = `/assets/source/accessories-march-2026/flat-bar-${width}mm-drawing.png?v=2026-11-03-page8-measurements`
+    const drawing = `/assets/source/accessories-march-2026/flat-bar-${width}mm-drawing.png?v=2026-11-24-page8-measurements-clean`
     const photo = `/assets/source/accessories-march-2026/flat-bar-${width}mm-photo.png?v=2026-11-03-page8-source-rows`
     if (product.drawing === drawing && product.photo === photo) return product
     changed = true
