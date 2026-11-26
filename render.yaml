@@ -46,12 +46,15 @@ services:
         value: gpt-image-1.5
       - key: CATALOGUE_ENABLE_AI_FALLBACK
         value: "0"
-      # Defaults OFF on purpose: "1" puts the catalogue assistant bot on the
+      # ON by the owner's explicit decision (26 Nov 2026), after testing the
+      # same switch locally: "1" puts the catalogue assistant bot on the
       # public, no-login site itself — able to add/delete products and run AI
       # photo edits there, reachable by anyone with the URL, not only the
-      # admin. Flip to "1" in the Render dashboard only as a separate,
-      # deliberate step once you accept that risk.
+      # admin. Every edit re-publishes immediately, so it is live for the next
+      # visitor; the admin's own working copy (IndexedDB in the admin browser)
+      # is never touched, and re-publishing from the admin restores the site.
+      # Set back to "0" to close it again.
       - key: PUBLIC_CATALOGUE_EDIT
-        value: "0"
+        value: "1"
       - key: PUBLIC_BOT_RATE_LIMIT_PER_HOUR
         value: "20"
