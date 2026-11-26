@@ -98,4 +98,32 @@ const flatBarRows = [20, 25, 30, 80].map((width, index) => ({
 const repairedFlatBars = repairLegacyAccessoriesProducts('accessories', flatBarRows)
 assert.ok(repairedFlatBars.every(product => /page8-measurements-clean/.test(product.drawing)), 'page 8 must use the clean measurement assets')
 
+// A legacy page-3 save could promote the two White-only references belonging
+// to the first L Profile into a fourth product. Repair it without losing the
+// original mistaken record, then restore the three reviewed PVC source rows.
+const page3Duplicate = [
+  { id: 'p12', categoryId: 'accessories', sourcePage: 3, name: 'CORNER Profile', photo: 'old-corner', drawing: 'old-corner-drawing' },
+  {
+    id: 'p13', categoryId: 'accessories', sourcePage: 3, name: 'L Profile',
+    variants: ['Silver', 'Rose Gold', 'Gold', 'Black'].map(name => ({ name, photo: `old-${name}` })),
+    exceptions: [{ variant: { name: 'White' }, drawing: 'old-15mm' }, { variant: { name: 'White' }, drawing: 'old-20mm' }],
+  },
+  {
+    id: 'p14', categoryId: 'accessories', sourcePage: 3, name: 'L Profile',
+    variants: [],
+    exceptions: [{ variant: { name: 'White' }, drawing: 'duplicate-15mm' }, { variant: { name: 'White' }, drawing: 'duplicate-20mm' }],
+  },
+  {
+    id: 'p15', categoryId: 'accessories', sourcePage: 3, name: 'L Profile',
+    variants: ['Silver', 'Rose Gold', 'Gold', 'Black'].map(name => ({ name, photo: `old-${name}` })),
+  },
+]
+const repairedPage3 = repairLegacyAccessoriesProducts('accessories', page3Duplicate)
+assert.equal(repairedPage3.length, 3)
+assert.deepEqual(repairedPage3.map(product => product.id), ['p12', 'p13', 'p15'])
+assert.equal(repairedPage3[1].sourceDuplicateBackup?.id, 'p14')
+assert.ok(repairedPage3[0].variants.every(variant => /assets\/pvc\/corner-profile-v/.test(variant.photo)))
+assert.ok(repairedPage3[1].variants.every(variant => /assets\/pvc\/l-profile-14-v/.test(variant.photo)))
+assert.ok(repairedPage3[2].variants.every(variant => /assets\/pvc\/l-profile-10-v/.test(variant.photo)))
+
 console.log('Accessories March structure: 37 products, page 6 kept as two products, saved-catalogue repair OK')

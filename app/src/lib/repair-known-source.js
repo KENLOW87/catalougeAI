@@ -8,6 +8,7 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
   if (!Array.isArray(products)) return products
   if (categoryId === 'carbon-crystal-wall') return repairCarbonCrystalProfileRows(products)
   if (categoryId !== 'accessories') return products
+  products = repairMarch2026Page3Duplicate(products)
   products = repairPvcMeasurementDrawings(products)
   products = splitMarch2026EndBendProducts(products)
   products = repairMarch2026Variations(products)
@@ -35,6 +36,43 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
     sourcePreserved: true,
   }
   return [...products.slice(0, before), restored, ...products.slice(before)]
+}
+
+// A legacy Accessories save sometimes promoted the two White-only L Profile
+// references on source page 3 into a fourth product. They already belong to the
+// preceding L Profile row; the source page has exactly three products:
+// CORNER, L (with White 15/20mm references), and L. Keep the raw mistaken row
+// attached as a recovery backup, but remove it from the rendered product list.
+function repairMarch2026Page3Duplicate(products) {
+  const start = products.findIndex((product, index) =>
+    normal(product?.name) === 'corner profile' &&
+    normal(products[index + 1]?.name) === 'l profile' &&
+    normal(products[index + 2]?.name) === 'l profile' &&
+    normal(products[index + 3]?.name) === 'l profile')
+  if (start < 0) return products
+
+  const rows = products.slice(start, start + 4)
+  const duplicateOffset = rows.findIndex((product, offset) =>
+    offset > 0 && normal(product?.name) === 'l profile' &&
+    (!Array.isArray(product?.variants) || product.variants.length === 0) &&
+    Array.isArray(product?.exceptions) && product.exceptions.length >= 2)
+  if (duplicateOffset < 0) return products
+
+  const duplicate = rows[duplicateOffset]
+  const ownerOffset = rows.findIndex((product, offset) =>
+    offset > 0 && offset !== duplicateOffset && normal(product?.name) === 'l profile' &&
+    Array.isArray(product?.variants) && product.variants.length >= 4 &&
+    Array.isArray(product?.exceptions) && product.exceptions.length >= 2)
+  if (ownerOffset < 0) return products
+
+  const ownerIndex = start + ownerOffset
+  const repaired = products.slice()
+  repaired[ownerIndex] = {
+    ...repaired[ownerIndex],
+    sourceDuplicateBackup: repaired[ownerIndex].sourceDuplicateBackup ?? duplicate,
+  }
+  repaired.splice(start + duplicateOffset, 1)
+  return repaired
 }
 
 // Carbon Crystal's edge-profile source sheet is one page containing three
