@@ -14,6 +14,7 @@ const browser = await puppeteer.launch({ executablePath:'C:/Program Files/Google
 try {
   const page = await browser.newPage(), payloads = [], errors = []
   let detected = false, forbidden = 0
+  let pendingPdfResult = null
   const forbiddenUrls = []
   page.on('pageerror',error => errors.push(error.message))
   const headers = {'Access-Control-Allow-Origin':'http://localhost:5173','Access-Control-Allow-Headers':'Content-Type,X-Activity-Job-ID,X-Activity-Origin','Access-Control-Allow-Methods':'GET,POST,OPTIONS'}
@@ -23,9 +24,19 @@ try {
     if (request.method()==='OPTIONS') return request.respond({status:204,headers})
     if (path==='/api/ingest/status') return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({ready:true,aiFallback:true})})
     if (path==='/api/activity/events') return request.respond({status:200,headers,contentType:'application/json',body:'{"ok":true}'})
-    if (['/api/ingest','/api/ingest-image'].includes(path)) {
-      const payload = JSON.parse(request.postData()); payloads.push(payload)
+    if (path==='/api/ingest-pdf/jobs/mock-job') {
+      return request.respond({status:200,headers,contentType:'application/json',body:JSON.stringify({status:'complete',result:pendingPdfResult})})
+    }
+    if (['/api/ingest','/api/ingest-pdf/start','/api/ingest-image'].includes(path)) {
+      const payload = path === '/api/ingest-pdf/start'
+        ? { into: request.headers()['x-catalogue-into'] || null, filename: request.headers()['x-catalogue-filename'] || '' }
+        : JSON.parse(request.postData())
+      payloads.push(payload)
       const result = {products:[{id:'neutral-test',name:'ZX77',photo,photoTreatmentMode:'preserve-scene',wantsDrawing:false,readBy:'vision'}],routing:{confident:detected,...(detected ? {suggestedCategoryId:'wainscoting-mirror'}:{}),filename:payload.filename}}
+      if (path === '/api/ingest-pdf/start') {
+        pendingPdfResult = result
+        return request.respond({status:202,headers,contentType:'application/json',body:JSON.stringify({jobId:'mock-job',status:'working'})})
+      }
       return request.respond({status:200,headers,contentType:path==='/api/ingest'?'application/x-ndjson':'application/json',body:path==='/api/ingest'?JSON.stringify({done:result})+'\n':JSON.stringify(result)})
     }
     if (/\/api\/(interpret|image\/edit|export)/.test(request.url()) || /^https?:/.test(request.url()) && !['localhost','127.0.0.1'].includes(new URL(request.url()).hostname)) {forbidden++;forbiddenUrls.push(request.url());return request.abort()}

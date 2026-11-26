@@ -84,7 +84,7 @@ export function createActivityStore(directory) {
 export function installActivity(app, { directory = fileURLToPath(new URL('../data/activity/', import.meta.url)), request = globalThis.fetch } = {}) {
   const store = createActivityStore(directory)
   const record = event => store.append(event)
-  const kinds = { '/api/ingest': 'upload.pdf', '/api/ingest-pdf': 'upload.pdf', '/api/ingest-image': 'upload.image', '/api/interpret': 'bot.command', '/api/image/edit': 'image.edit' }
+  const kinds = { '/api/ingest': 'upload.pdf', '/api/ingest-pdf': 'upload.pdf', '/api/ingest-pdf/start': 'upload.pdf', '/api/ingest-image': 'upload.image', '/api/interpret': 'bot.command', '/api/image/edit': 'image.edit' }
   app.get('/api/activity', (req, res) => {
     const date = req.query.date ?? malaysiaDate()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Use YYYY-MM-DD' })

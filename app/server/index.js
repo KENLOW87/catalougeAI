@@ -438,6 +438,74 @@ const ingestHandler = async (req, res) => {
 // product extraction and streamed review results.
 app.post('/api/ingest', ingestHandler)
 
+// Render's proxy has a hard request lifetime. A large supplier PDF can be valid
+// and still take longer than that lifetime to render/OCR, which used to surface
+// as a generic 502 page containing Render's @font-face CSS. Keep the original
+// streaming endpoint below for older clients, but let the current browser start
+// the work and poll a short-lived job endpoint instead.
+const pdfJobs = new Map()
+const PDF_JOB_TTL = 30 * 60 * 1000
+
+function prunePdfJobs() {
+  const now = Date.now()
+  for (const [id, job] of pdfJobs) {
+    if (job.finishedAt && now - job.finishedAt > PDF_JOB_TTL) pdfJobs.delete(id)
+  }
+}
+
+function queuePdfIngest({ bytes, into, filename, expectedBytes }) {
+  prunePdfJobs()
+  const job = {
+    id: randomUUID(), status: 'working', progress: 'Starting…', result: null,
+    error: null, cancelled: false, createdAt: Date.now(), finishedAt: 0,
+    bytes,
+  }
+  pdfJobs.set(job.id, job)
+  void (async () => {
+    try {
+      job.result = await ingestPdf(job.bytes, message => { job.progress = message }, into,
+        () => job.cancelled, filename, expectedBytes)
+      job.status = job.cancelled ? 'cancelled' : 'complete'
+    } catch (error) {
+      job.status = job.cancelled || error?.name === 'IngestCancelled' ? 'cancelled' : 'failed'
+      job.error = String(error?.message ?? error)
+    } finally {
+      job.bytes = null
+      job.finishedAt = Date.now()
+    }
+  })()
+  return job
+}
+
+app.post('/api/ingest-pdf/start', express.raw({ type: 'application/pdf', limit: '300mb' }), (req, res) => {
+  if (!Buffer.isBuffer(req.body) || !req.body.length) {
+    return res.status(400).json({ error: 'PDF bytes required' })
+  }
+  const job = queuePdfIngest({
+    bytes: req.body,
+    into: String(req.headers['x-catalogue-into'] ?? '') || null,
+    filename: String(req.headers['x-catalogue-filename'] ?? ''),
+    expectedBytes: Number(req.headers['x-upload-bytes']) || req.body.length,
+  })
+  res.status(202).json({ jobId: job.id, status: job.status })
+})
+
+app.get('/api/ingest-pdf/jobs/:id', (req, res) => {
+  const job = pdfJobs.get(req.params.id)
+  if (!job) return res.status(404).json({ error: 'PDF ingest job not found or expired.' })
+  if (job.status === 'working') return res.json({ status: job.status, progress: job.progress })
+  if (job.status === 'cancelled') return res.json({ status: job.status, error: 'Import cancelled.' })
+  if (job.status === 'failed') return res.json({ status: job.status, error: job.error })
+  return res.json({ status: job.status, result: job.result })
+})
+
+app.delete('/api/ingest-pdf/jobs/:id', (req, res) => {
+  const job = pdfJobs.get(req.params.id)
+  if (!job) return res.status(404).json({ error: 'PDF ingest job not found or expired.' })
+  if (job.status === 'working') job.cancelled = true
+  res.json({ status: job.cancelled ? 'cancelling' : job.status })
+})
+
 app.post('/api/ingest-pdf', express.raw({ type: 'application/pdf', limit: '300mb' }), (req, res) => {
   if (!Buffer.isBuffer(req.body) || !req.body.length) {
     return res.status(400).json({ error: 'PDF bytes required' })

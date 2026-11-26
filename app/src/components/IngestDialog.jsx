@@ -75,6 +75,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   // server to stop: it watches for the connection closing, so an abandoned import
   // stops holding the one OCR worker.
   const abortRef = useRef(null)
+  const ingestJobRef = useRef(null)
   const activityJob = useRef(null)
 
   useEffect(() => {
@@ -259,7 +260,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       const isImage = file.type.startsWith('image/')
       const payload = await (isImage ? readImageFile(file) : null)
       const pdfUpload = !isImage
-      const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest-pdf'), {
+      const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest-pdf/start'), {
         method: 'POST',
         signal: ctl.signal,
         headers: pdfUpload
@@ -287,6 +288,32 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
         await showResult(await res.json())
         return
       }
+
+      // PDF work runs as a server-side job so Render's request timeout cannot
+      // turn a valid, slow extraction into a generic 502 page. The initial
+      // response only acknowledges the uploaded bytes; progress and the final
+      // review payload are fetched through short requests.
+      const started = await res.json()
+      if (!started.jobId) throw new Error('The server did not return an upload job.')
+      ingestJobRef.current = started.jobId
+      for (;;) {
+        const statusRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}`), { signal: ctl.signal })
+        if (!statusRes.ok) {
+          const detail = await statusRes.text().catch(() => '')
+          throw new Error(`Upload job failed (${statusRes.status}): ${detail.slice(0, 240)}`)
+        }
+        const job = await statusRes.json()
+        if (job.progress) setProgress(job.progress)
+        if (job.status === 'complete') {
+          await showResult(job.result)
+          break
+        }
+        if (job.status === 'failed' || job.status === 'cancelled') {
+          throw new Error(job.error || 'PDF import was cancelled.')
+        }
+        await new Promise(resolve => setTimeout(resolve, 900))
+      }
+      return
 
       // Newline-delimited JSON: one object per line, streamed as work proceeds.
       //
@@ -330,6 +357,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       setError(String(err.message ?? err))
       setPhase('error')
     } finally {
+      ingestJobRef.current = null
       abortRef.current = null
     }
   }
@@ -337,7 +365,10 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
   /** Stop reading and leave. The server sees the connection close and gives up too. */
   const cancelRead = () => {
     activityStatus(activityJob.current, 'cancelled-or-review-dismissed')
+    const jobId = ingestJobRef.current
+    if (jobId) fetch(apiUrl(`/api/ingest-pdf/jobs/${jobId}`), { method: 'DELETE' }).catch(() => {})
     abortRef.current?.abort()
+    ingestJobRef.current = null
     abortRef.current = null
     onCancel()
   }
