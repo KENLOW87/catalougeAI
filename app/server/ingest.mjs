@@ -755,10 +755,16 @@ export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = 
   // grouping is unified.
   const singleAccessoriesCatalogue = /accessories\s*\(?(?:march|mac)\b/i.test(filename)
   const destinationProfile = sourceProfileForCategory(intoCategory)
+  // Keep the source layout authoritative when a PDF explicitly identifies
+  // itself as the 3D edition. This protects against a stale/wrong destination
+  // id (or a generic PVC Marble category) selecting the grid reader first.
+  const explicit3dSource = /pvc[\s-]+marble[\s-]+sheet[\s-]+3d/i.test(`${intoCategory ?? ''} ${filename}`)
   // A card upload has an explicit destination. Prefer it over a misleading
   // renamed filename (for example a 3D file named only "PVC Marble Sheet.pdf").
   // Dashboard-neutral uploads keep filename/PDF fingerprint routing below.
-  let sourceProfile = destinationProfile || sourceProfileForFilename(filename)
+  let sourceProfile = explicit3dSource
+    ? 'pvc-marble-sheet-3d'
+    : (destinationProfile || sourceProfileForFilename(filename))
   // This is essential for scanned/image-only PDFs: there is no text for
   // sourceProfileForPdf() to read, and falling through would keep only whole
   // pages (0 products) or spend paid AI on a layout already covered locally.
