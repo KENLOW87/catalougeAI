@@ -1003,7 +1003,8 @@ export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = 
           // protection never engaged and H Micro-Seam's photo came from page 9.
           const trustedSpec = raw._spec?.startsWith('wainscoting-') ||
             raw._spec?.startsWith('accessories-march-') ||
-            raw._spec?.startsWith('carbon-crystal-')
+            raw._spec?.startsWith('carbon-crystal-') ||
+            raw._spec?.startsWith('pvc-marble-sheet-3d-')
           const p = preferNativePhotos(raw, nativePage, assetPage,
             localOnlyKnownCatalogue || trustedSpec,
             raw._spec?.startsWith('carbon-crystal-'))
@@ -1103,7 +1104,8 @@ export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = 
           // protection never engaged and H Micro-Seam's photo came from page 9.
           const trustedSpec = raw._spec?.startsWith('wainscoting-') ||
             raw._spec?.startsWith('accessories-march-') ||
-            raw._spec?.startsWith('carbon-crystal-')
+            raw._spec?.startsWith('carbon-crystal-') ||
+            raw._spec?.startsWith('pvc-marble-sheet-3d-')
           const p = preferNativePhotos(raw, nativePage, assetPage,
             localOnlyKnownCatalogue || trustedSpec,
             raw._spec?.startsWith('carbon-crystal-'))
