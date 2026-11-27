@@ -169,6 +169,9 @@ export default function PublicSite() {
               ))}
             </div>
           )}
+          {botEnabled && (
+            <p className="ps-bot-note">Open any catalogue to use <b>Ask Catalogue Assistant</b> — ask about products, photos and catalogue details.</p>
+          )}
         </main>
       </div>
     )
@@ -197,6 +200,7 @@ export default function PublicSite() {
         <BotPanel
           items={products ?? []}
           category={category}
+          launcherLabel="Ask Catalogue Assistant"
           actions={{
             onAddProduct: (name, photo) => {
               const product = { ...category.kinds[0].make(), ...(name ? { name } : {}) }

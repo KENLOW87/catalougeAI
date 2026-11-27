@@ -64,7 +64,7 @@ const Avatar = ({ size = 30 }) => (
   </svg>
 )
 
-export default function BotPanel({ items, category, accepted = [], note = null, catalogues = [], actions = {} }) {
+export default function BotPanel({ items, category, accepted = [], note = null, catalogues = [], actions = {}, launcherLabel = '' }) {
   const [open, setOpen] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [log, setLog] = useState([])
@@ -715,6 +715,7 @@ export default function BotPanel({ items, category, accepted = [], note = null, 
         </div>
       )}
 
+      {launcherLabel && !open && <span className="bot-launcher-label">{launcherLabel}</span>}
       <button className={`bot-bubble ${open ? 'bot-bubble--open' : ''}`}
               onClick={() => (open ? closeBot() : setOpen(true))}
               title="Catalogue assistant" aria-label="Catalogue assistant">
