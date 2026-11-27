@@ -484,8 +484,8 @@ app.post('/api/ingest-pdf/start', express.raw({ type: 'application/pdf', limit: 
   // Render/proxy layers have occasionally dropped custom X-* headers. Keep
   // query parameters as a redundant, visible routing channel so a known
   // catalogue never falls through to the slow generic reader.
-  const into = String(req.headers['x-catalogue-into'] ?? req.query?.into ?? '') || null
-  const filename = String(req.headers['x-catalogue-filename'] ?? req.query?.filename ?? '')
+  const into = String(req.headers['x-catalogue-into'] || req.query?.into || '') || null
+  const filename = String(req.headers['x-catalogue-filename'] || req.query?.filename || '')
   const job = queuePdfIngest({
     bytes: req.body,
     into,
@@ -518,8 +518,8 @@ app.post('/api/ingest-pdf', express.raw({ type: 'application/pdf', limit: '300mb
   const bytes = req.body
   req.body = {
     pdf: bytes,
-    into: String(req.headers['x-catalogue-into'] ?? req.query?.into ?? '') || null,
-    filename: String(req.headers['x-catalogue-filename'] ?? req.query?.filename ?? ''),
+    into: String(req.headers['x-catalogue-into'] || req.query?.into || '') || null,
+    filename: String(req.headers['x-catalogue-filename'] || req.query?.filename || ''),
     bytes: Number(req.headers['x-upload-bytes']) || bytes.length,
   }
   return ingestHandler(req, res)
