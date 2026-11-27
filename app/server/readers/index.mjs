@@ -105,7 +105,7 @@ export async function readWithRules(page, onProgress = () => {}, pageNo = null, 
   const sourceScopedProfiles = new Set([
     'accessories-march', 'carbon-crystal-wall', 'pvc-foam-board',
     'pvc-marble-sheet-grid', 'pvc-marble-sheet-3d', 'acoustic-panel',
-    'acoustic-panel-2024', 'light-stone-wall', 'wainscoting',
+    'acoustic-panel-2024', 'ceiling-panel', 'light-stone-wall', 'wainscoting',
   ])
   // Some legacy source specs predate sourceProfile metadata. Keep their exact
   // family prefixes as a local compatibility map, otherwise a recognised

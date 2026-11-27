@@ -402,6 +402,93 @@ const PVC_MARBLE_SHEET_3D_SPECS = [
   pvc3dPage(10, ['3D-12A', '3D-12B', '3D-12C'], 3),
 ]
 
+// Ceiling Panel (December 2025) is a four-page source: one cover followed by
+// three technical sheets. The generic block reader sees the large product
+// photographs and lower profile drawings as one irregular shape, so it can
+// reject the cards and keep the page whole. These measured source rectangles
+// keep each printed code as one product, with its main photo separated from the
+// complete dimension/profile reference.
+const ceilingCard = (x, y, w = 94, h = 96) => ({ x, y, w, h })
+const ceilingPanelProduct = (page, names, photos, drawings, options = {}) => ({
+  id: `ceiling-panel-page-${page}`,
+  title: `Ceiling Panel product sheet page ${page}`,
+  sourceProfile: 'ceiling-panel',
+  category: 'ceiling-panel',
+  productShape: 'generic',
+  builtin: true,
+  sourcePriority: 30,
+  expectedAnchorCount: names.length,
+  anchor: { type: 'fixed', pages: [page], boxes: options.anchors },
+  kinds: [{ id: `ceiling-panel-cards-${page}`, fields: [
+    { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: names, box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'subtitle', type: 'text', required: true, absolute: true,
+      valueByAnchor: names.map(() => options.subtitle ?? 'Ceiling Panel'), box: { x: 0, y: 0, w: 1, h: 1 } },
+    { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: photos },
+    { key: 'drawing', type: 'lineart', source: true, absolute: true, boxByAnchor: drawings },
+  ], examplesByAnchor: (options.examples ?? names.map(() => [])).map(list => list.map(e => ({
+    ...e, role: e.role ?? 'usage', caption: e.caption ?? '',
+  }))) }],
+})
+
+const CEILING_PANEL_SPECS = [
+  {
+    id: 'ceiling-panel-cover',
+    title: 'Ceiling Panel cover',
+    sourceProfile: 'ceiling-panel',
+    category: 'ceiling-panel',
+    builtin: true,
+    nonProductPages: [1],
+    // The source profile is identified by the file's printed title or the
+    // explicit Ceiling Panel destination. This page is intentionally a cover;
+    // there are no product anchors to validate on it.
+    nonProductEvidence: { 1: [] },
+  },
+  ceilingPanelProduct(2,
+    ['CP01 Teak (Ceiling)', 'CP02 Walnut (Ceiling)', 'CP03 Brown (Ceiling)', 'CP04 Grey (Ceiling)'],
+    [
+      { x: 8, y: 40, w: 91, h: 38 }, { x: 108, y: 40, w: 91, h: 38 },
+      { x: 8, y: 146, w: 91, h: 38 }, { x: 108, y: 146, w: 91, h: 38 },
+    ],
+    [
+      { x: 7, y: 78, w: 92, h: 31 }, { x: 108, y: 78, w: 92, h: 31 },
+      { x: 7, y: 184, w: 92, h: 31 }, { x: 108, y: 184, w: 92, h: 31 },
+    ],
+    {
+      anchors: [ceilingCard(7, 26), ceilingCard(107, 26), ceilingCard(7, 132), ceilingCard(107, 132)],
+      subtitle: '300mm(W) x 3000mm(L)',
+      examples: [
+        [{ box: { x: 0, y: 256, w: 210, h: 41 }, caption: 'CP01 installation', role: 'usage' }],
+        [], [], [],
+      ],
+    }),
+  ceilingPanelProduct(3,
+    ['WCE01 Beige (Ceiling)', 'WCE02 Brown (Ceiling)'],
+    [{ x: 24, y: 48, w: 75, h: 43 }, { x: 114, y: 48, w: 75, h: 43 }],
+    [{ x: 12, y: 89, w: 88, h: 51 }, { x: 106, y: 79, w: 93, h: 62 }],
+    {
+      anchors: [ceilingCard(16, 28, 85, 115), ceilingCard(106, 28, 88, 115)],
+      subtitle: '90mm(W) x 50mm(T) x 3000mm(L)',
+      examples: [
+        [{ box: { x: 14, y: 188, w: 182, h: 91 }, caption: 'WCE01 installation', role: 'usage' }],
+        [],
+      ],
+    }),
+  ceilingPanelProduct(4,
+    ['CLP01 White (Ceiling)', 'CLP02 Beige (Ceiling)', 'CLP03 Walnut (Ceiling)', 'CLP04 Brown (Ceiling)'],
+    [
+      { x: 14, y: 43, w: 84, h: 55 }, { x: 108, y: 43, w: 88, h: 55 },
+      { x: 14, y: 149, w: 84, h: 55 }, { x: 108, y: 149, w: 88, h: 55 },
+    ],
+    [
+      { x: 10, y: 97, w: 89, h: 29 }, { x: 108, y: 97, w: 91, h: 29 },
+      { x: 10, y: 203, w: 89, h: 29 }, { x: 108, y: 203, w: 91, h: 29 },
+    ],
+    {
+      anchors: [ceilingCard(8, 29), ceilingCard(106, 29), ceilingCard(8, 135), ceilingCard(106, 135)],
+      subtitle: '255mm(W) x 3000mm(L)',
+    }),
+]
+
 // Acoustic Panel (August 2025) has a cover followed by four one-product
 // profile sheets.  The product shot is the small angled sample at upper left;
 // the large installed scenes below are examples and must not become products.
@@ -559,6 +646,7 @@ export const BUILTIN_SPECS = [
   ...PVC_FOAM_BOARD_SPECS,
   ...PVC_MARBLE_SHEET_SPECS,
   ...PVC_MARBLE_SHEET_3D_SPECS,
+  ...CEILING_PANEL_SPECS,
   ...ACOUSTIC_PANEL_SPECS,
   ...ACOUSTIC_PANEL_2024_SPECS,
   ...LIGHT_STONE_SPECS,

@@ -47,7 +47,7 @@ const execFileAsync = promisify(execFile)
 // Bump whenever the stored shape of a known-source result changes. The 3D
 // reader now preserves each composed A/B/C source photo instead of reusing
 // the old split-panel extraction.
-const INGEST_CACHE_VERSION = 'local-read-v16-composed-3d-clean-measurement-crop'
+const INGEST_CACHE_VERSION = 'local-read-v17-ceiling-panel-reader'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
@@ -147,6 +147,7 @@ export function isCatalogueAiExportMetadata(info = '') {
 export function sourceProfileForFilename(filename = '') {
   const value = String(filename)
   if (/carbon\s+crystal(?:\s+wall\s+panel)?/i.test(value)) return 'carbon-crystal-wall'
+  if (/ceiling\s+panel/i.test(value)) return 'ceiling-panel'
   if (/wainscoting/i.test(value)) return 'wainscoting'
   if (/pvc\s+foam\s+board/i.test(value)) return 'pvc-foam-board'
   if (/light\s+stone(?:\s+wall)?/i.test(value)) return 'light-stone-wall'
@@ -182,6 +183,7 @@ export function sourceProfileForCategory(category = '') {
     'acoustic-panel': 'acoustic-panel',
     'light-stone-wall': 'light-stone-wall',
     'carbon-crystal-wall': 'carbon-crystal-wall',
+    'ceiling-panel': 'ceiling-panel',
     'wainscoting-mirror': 'wainscoting',
   }[id] ?? null
 }
@@ -207,6 +209,7 @@ async function sourceProfileForPdf(pdfPath, filename = '') {
     const { stdout } = await run('pdftotext', ['-f', '1', '-l', '3', '-layout', pdfPath, '-'])
     const text = String(stdout ?? '')
     if (/carbon\s+crystal\s+wall\s+panel/i.test(text)) return 'carbon-crystal-wall'
+    if (/ceiling\s+panel/i.test(text)) return 'ceiling-panel'
     if (/pvc\s+foam\s+board/i.test(text)) return 'pvc-foam-board'
     if (/light\s+stone\s+wall\s+panel/i.test(text)) return 'light-stone-wall'
     if (/pvc\s+marble\s+sheet\s+3d/i.test(text)) return 'pvc-marble-sheet-3d'
