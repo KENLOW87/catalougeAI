@@ -2,7 +2,7 @@
 // generic/paid reader.  It checks the local catalogue geometry contract only;
 // the full PDF smoke check is run separately against the supplier fixtures.
 import assert from 'node:assert/strict'
-import { sourceProfileForFilename, sourceProfileForCategory } from './ingest.mjs'
+import { sourceProfileForFilename, sourceProfileForCategory, sourceProfileForImport } from './ingest.mjs'
 import { BUILTIN_SPECS } from './readers/specs.mjs'
 
 assert.equal(sourceProfileForFilename('PVC Marble Sheet 3D (September 2025).pdf'), 'pvc-marble-sheet-3d')
@@ -11,6 +11,7 @@ assert.equal(sourceProfileForFilename('Acoustic Panel (August 2025).pdf'), 'acou
 assert.equal(sourceProfileForFilename('Acoustic Panel (Nov 2024).pdf'), 'acoustic-panel-2024')
 assert.equal(sourceProfileForCategory('pvc-marble-sheet-3d'), 'pvc-marble-sheet-3d')
 assert.equal(sourceProfileForCategory('PVC Marble Sheet 3D'), 'pvc-marble-sheet-3d')
+assert.equal(sourceProfileForImport('pvc-marble-sheet', 'PVC Marble Sheet 3D (Aug 2026).pdf'), 'pvc-marble-sheet-3d')
 assert.equal(sourceProfileForCategory('pvc-foam-board'), 'pvc-foam-board')
 assert.equal(sourceProfileForCategory('accessories'), 'accessories-march')
 
