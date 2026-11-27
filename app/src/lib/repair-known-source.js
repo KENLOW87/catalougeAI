@@ -71,9 +71,9 @@ function repairPvc3dCombinedProducts(products) {
   for (const [page, current] of byPage) {
     const [name, key] = PVC3D_SOURCE_ASSETS[page]
     const base = `/assets/source/pvc-marble-sheet-3d/${key}`
-    const photo = `${base}-photo.png?v=2026-11-27-combined-product-v2`
-    const drawing = `${base}-drawing.png?v=2026-11-27-combined-product-v2`
-    const display = `${base}-display.png?v=2026-11-27-combined-product-v2`
+    const photo = `${base}-photo.png?v=2026-11-27-combined-product-v3`
+    const drawing = `${base}-drawing.png?v=2026-11-27-combined-product-v3`
+    const display = `${base}-display.png?v=2026-11-27-combined-product-v3`
     const next = {
       ...current,
       name,

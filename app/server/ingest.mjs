@@ -47,7 +47,7 @@ const execFileAsync = promisify(execFile)
 // Bump whenever the stored shape of a known-source result changes. The 3D
 // reader now preserves each composed A/B/C source photo instead of reusing
 // the old split-panel extraction.
-const INGEST_CACHE_VERSION = 'local-read-v15-composed-3d-measurement-crop'
+const INGEST_CACHE_VERSION = 'local-read-v16-composed-3d-clean-measurement-crop'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the

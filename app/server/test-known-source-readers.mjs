@@ -16,8 +16,12 @@ assert.equal(sourceProfileForCategory('pvc-foam-board'), 'pvc-foam-board')
 assert.equal(sourceProfileForCategory('accessories'), 'accessories-march')
 
 const pvc3d = BUILTIN_SPECS.filter(s => s.sourceProfile === 'pvc-marble-sheet-3d' && s.expectedAnchorCount)
-assert.deepEqual(pvc3d.map(s => s.expectedAnchorCount), [2, 2, 3, 3, 2, 3, 3, 2, 3])
-assert.equal(pvc3d.reduce((n, s) => n + s.expectedAnchorCount, 0), 23)
+// A printed 1A/1B (or 3A/3B/3C) panel group is one composed product row.
+// The letters are variations inside the source photo/drawing, not separate
+// product cards. This is the regression that prevents the 3D reader from
+// splitting the supplier's layout again.
+assert.deepEqual(pvc3d.map(s => s.expectedAnchorCount), [1, 1, 1, 1, 1, 1, 1, 1, 1])
+assert.equal(pvc3d.reduce((n, s) => n + s.expectedAnchorCount, 0), 9)
 
 const acoustic = BUILTIN_SPECS.filter(s => s.sourceProfile === 'acoustic-panel' && s.expectedAnchorCount)
 assert.deepEqual(acoustic.map(s => s.expectedAnchorCount), [1, 1, 1, 1])
@@ -29,4 +33,4 @@ assert.deepEqual(acousticPhotoBox(acoustic[3]), { x: 16, y: 77, w: 50, h: 26 })
 const acoustic2024 = BUILTIN_SPECS.filter(s => s.sourceProfile === 'acoustic-panel-2024' && s.expectedAnchorCount)
 assert.deepEqual(acoustic2024.map(s => s.expectedAnchorCount), [2])
 
-console.log('Known source readers: PVC Marble Sheet 3D=23 products, Acoustic Panel=4 products, local-only routing profiles present.')
+console.log('Known source readers: PVC Marble Sheet 3D=9 composed product rows, Acoustic Panel=4 products, local-only routing profiles present.')

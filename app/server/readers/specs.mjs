@@ -324,18 +324,46 @@ const PVC_MARBLE_SHEET_SPECS = [
 // or three printed boards. Split the measured reference into source variations
 // of ONE product (1A/1B, 2A/2B, etc.); the lower installation photo is supporting
 // source material, not another card.
+const PVC_3D_DRAWING_BOXES = {
+  // The diagram column moves between the two-panel pages and the three-panel
+  // pages.  These are deliberately page-specific: one shared x=118 box was
+  // pulling a vertical slice of the product photo into the drawing.
+  2: { x: 130, y: 104, w: 66, h: 53 },
+  3: { x: 130, y: 104, w: 66, h: 53 },
+  4: { x: 137, y: 104, w: 64, h: 53 },
+  5: { x: 137, y: 104, w: 64, h: 53 },
+  6: { x: 121, y: 104, w: 62, h: 53 },
+  7: { x: 137, y: 104, w: 64, h: 53 },
+  8: { x: 137, y: 104, w: 64, h: 53 },
+  9: { x: 118, y: 104, w: 62, h: 53 },
+  10: { x: 137, y: 104, w: 64, h: 53 },
+}
+
+const PVC_3D_PHOTO_BOXES = {
+  // Keep a small white/shadow margin around the complete panel group, but stop
+  // before the printed product details to the right. Pages 6 and 9 use a
+  // different horizontal placement from the other two-panel pages.
+  2: { x: 40, y: 52, w: 81, h: 98 },
+  3: { x: 40, y: 52, w: 81, h: 98 },
+  4: { x: 10, y: 52, w: 125, h: 98 },
+  5: { x: 10, y: 52, w: 125, h: 98 },
+  6: { x: 33, y: 52, w: 82, h: 98 },
+  7: { x: 10, y: 52, w: 125, h: 98 },
+  8: { x: 10, y: 52, w: 125, h: 98 },
+  9: { x: 17, y: 52, w: 86, h: 98 },
+  10: { x: 10, y: 52, w: 125, h: 98 },
+}
+
 const pvc3dPage = (page, codes, panelCount) => {
-  const photo = panelCount === 2
-    ? { x: 40, y: 52, w: 81, h: 98 }
-    : { x: 11, y: 52, w: 122, h: 98 }
+  const photo = PVC_3D_PHOTO_BOXES[page]
   // The supplier's product picture is already a composed A/B/C panel image.
   // Keep that complete source rectangle; splitting it into individual strips
   // makes the extracted catalogue look unlike the PDF and loses the intended
   // product presentation.
-  // The dimension sketch starts left of the product caption's right column.
-  // Keep the whole 9A/9B/9C block and begin below the final size line so no
-  // title text is pulled into the measurement crop.
-  const drawing = { x: 118, y: 105, w: 84, h: 58 }
+  // The dimension sketch starts after the product image, not at the broad
+  // page anchor. Keep the complete A/B/C block and its labels, while excluding
+  // the neighbouring product strip and the title text above it.
+  const drawing = PVC_3D_DRAWING_BOXES[page]
   const display = { x: 0, y: 162, w: 210, h: 135 }
   const labels = codes.map(code => String(code).replace(/^3D-/i, ''))
   const displayName = labels.length === 2
