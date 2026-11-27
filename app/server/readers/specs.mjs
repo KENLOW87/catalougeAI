@@ -348,6 +348,9 @@ const pvc3dPage = (page, codes, panelCount) => {
         valueByAnchor: codes.map(() => '1200mm(W) x 3000mm(L) x 3mm(T)'), box: { x: 0, y: 0, w: 1, h: 1 } },
       { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: panels },
     ], variantGroupByAnchor: groups, variantLabelByAnchor: labels }],
+    // A/B/C are visual variations of one product. These pages do not contain
+    // technical drawings, so a missing drawing must not block the import.
+    variantsRequireDrawing: false,
   }
 }
 

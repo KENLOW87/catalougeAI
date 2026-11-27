@@ -406,7 +406,8 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
     if (isGeneric(d)) return [
       !d.name && 'no name',
       d.wantsDrawing && !d.drawing && 'no dimension drawing',
-      d.variantTechnical && (d.finishes ?? []).some(f => !f.drawing) && 'a variation has no dimension drawing',
+      d.variantTechnical && d.variantsRequireDrawing !== false &&
+        (d.finishes ?? []).some(f => !f.drawing) && 'a variation has no dimension drawing',
       !d.photo && !(d.finishes ?? []).some(f => f.photo) && 'no photos',
     ].filter(Boolean)
     if (isPvc(d)) return [

@@ -509,7 +509,15 @@ function preferNativePhotos(product, nativePage, assetPage, preserveRendered = f
       if (!Array.isArray(out[key]) || !Array.isArray(boxes[key])) continue
       out[key] = out[key].map((item, index) => {
         const image = rendered(boxes[key][index])
-        return image ? { ...item, photo: image } : item
+        // Keep the measured source rectangle on each variation. The generic
+        // import review checks variation media independently; without this
+        // metadata a trusted local crop was sent through the background remover
+        // again and a failed cutout blocked the whole known-source import.
+        const sourceBox = normalized(boxes[key][index])
+        return image
+          ? { ...item, photo: image, sourceBox,
+              photoTreatmentMode: 'trusted-source-crop', sourcePreserved: true }
+          : item
       })
     }
     delete out.__sourceBoxes
@@ -665,6 +673,7 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     supportCaption:p.supportCaption,
     productShape:p.productShape ?? spec?.productShape ?? null,
     variantTechnical:Boolean(p.variantTechnical),
+    variantsRequireDrawing: p.variantsRequireDrawing ?? spec?.variantsRequireDrawing,
     sourcePreserved: Boolean(p.sourcePreserved),
     sourcePage: pageNo,
     readBy: 'rules',
