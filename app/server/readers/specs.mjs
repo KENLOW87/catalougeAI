@@ -513,14 +513,16 @@ const LIGHT_STONE_SPECS = [
     [
       { main: lightStonePanel(7, 53), example: lightStonePanel(54, 53) },
       { main: lightStonePanel(108, 53), example: lightStonePanel(157, 53) },
-      { main: lightStonePanel(7, 181), example: lightStonePanel(55, 181) },
-      { main: lightStonePanel(108, 181), example: lightStonePanel(157, 181) },
+      // The source "New" badge sits over the seam between the two panels. Keep
+      // that badge out of the product crops; it is a label, not panel artwork.
+      { main: lightStonePanel(7, 191, 47, 90), example: lightStonePanel(55, 191, 47, 90) },
+      { main: lightStonePanel(108, 191, 47, 90), example: lightStonePanel(157, 191, 47, 90) },
     ], {
       codes: ['LS05', 'LS06', 'LS04N', 'LS05N'],
       anchors: [lightStoneCard(3, 34), lightStoneCard(107, 34), lightStoneCard(3, 158, 100, 139), lightStoneCard(107, 158, 100, 139)],
     }),
   lightStonePairSpec(4, ['LS07 - Aurora Ice 3D'],
-    [{ main: lightStonePanel(11, 53, 45), example: lightStonePanel(59, 53, 48) }], {
+    [{ main: lightStonePanel(11, 63, 45, 90), example: lightStonePanel(59, 63, 48, 90) }], {
       codes: ['LS07'],
       anchors: [lightStoneCard(5, 34, 102, 124)],
       layoutRowGroup: 'light-stone-wall-page-4',
