@@ -15,6 +15,12 @@ const PAGE_H = 297
 const BOTTOM_MARGIN = 8
 const FALLBACK_HEADER_MM = 24
 
+const LIGHT_STONE_SOURCE_PAGES = {
+  LS01: 2, LS02: 2, LS03: 2, LS04: 2,
+  LS05: 3, LS06: 3, LS04N: 3, LS05N: 3,
+  LS07: 4, ICP01: 5,
+}
+
 // Light Stone imports are sometimes explicitly routed into the user's PU Stone
 // catalogue. The destination must not erase the source layout: these records
 // still have two product views (before/after backlighting) and, on the last two
@@ -27,7 +33,14 @@ const isLightStoneProduct = product => {
   const size = `${product.size ?? ''} ${product.subtitle ?? ''}`
   return /^(?:LS\d{2}N?|ICP\d{2})\b/i.test(code) &&
     /1220\s*mm\s*x\s*2440\s*mm/i.test(size) &&
-    Number.isInteger(Number(product.sourcePage)) && Number(product.sourcePage) >= 2 && Number(product.sourcePage) <= 5
+    Boolean(LIGHT_STONE_SOURCE_PAGES[code.match(/^(?:LS\d{2}N?|ICP\d{2})/i)?.[0]?.toUpperCase()])
+}
+
+const lightStoneSourcePage = product => {
+  const page = Number(product?.sourcePage)
+  if (Number.isInteger(page) && page >= 2 && page <= 5) return page
+  const code = String(product?.code ?? product?.name ?? '').match(/^(?:LS\d{2}N?|ICP\d{2})\b/i)?.[0]?.toUpperCase()
+  return LIGHT_STONE_SOURCE_PAGES[code] ?? null
 }
 
 /**
@@ -134,12 +147,12 @@ export function defaultCategoryFor(parent, chrome = null) {
         // cards from pages 2-3 in two rows of two, and keep the single product
         // plus its installation strip together on pages 4-5. The cover is an
         // isPage plate and is handled above, so the source order remains 1-5.
-        if (isLightStoneProduct(product) && Number.isInteger(product.sourcePage)) {
-          const sourcePage = product.sourcePage
+        if (isLightStoneProduct(product)) {
+          const sourcePage = lightStoneSourcePage(product)
           const sourceProducts = [product]
           while (itemIndex + 1 < items.length) {
             const next = items[itemIndex + 1]
-            if (!next || next.isPage || next.categoryId !== 'light-stone-wall' || next.sourcePage !== sourcePage) break
+            if (!next || next.isPage || !isLightStoneProduct(next) || lightStoneSourcePage(next) !== sourcePage) break
             sourceProducts.push({ ...next, slot: ++slot })
             itemIndex++
           }
