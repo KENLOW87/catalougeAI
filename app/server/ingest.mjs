@@ -679,6 +679,7 @@ export function adoptRuleProduct(p, index, pageNo, spec) {
     variantsRequireDrawing: p.variantsRequireDrawing ?? spec?.variantsRequireDrawing,
     sourcePreserved: Boolean(p.sourcePreserved),
     sourcePage: pageNo,
+    sourceProfile: spec?.sourceProfile ?? null,
     readBy: 'rules',
   }
   const category = ['accessories-led', 'pvc-marble'].includes(spec?.category)

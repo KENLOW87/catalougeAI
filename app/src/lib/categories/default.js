@@ -15,6 +15,21 @@ const PAGE_H = 297
 const BOTTOM_MARGIN = 8
 const FALLBACK_HEADER_MM = 24
 
+// Light Stone imports are sometimes explicitly routed into the user's PU Stone
+// catalogue. The destination must not erase the source layout: these records
+// still have two product views (before/after backlighting) and, on the last two
+// source pages, one installation strip. Keep this fallback for records saved by
+// older builds before sourceProfile was persisted.
+const isLightStoneProduct = product => {
+  if (!product || product.isPage) return false
+  if (product.sourceProfile === 'light-stone-wall') return true
+  const code = String(product.code ?? product.name ?? '').trim()
+  const size = `${product.size ?? ''} ${product.subtitle ?? ''}`
+  return /^(?:LS\d{2}N?|ICP\d{2})\b/i.test(code) &&
+    /1220\s*mm\s*x\s*2440\s*mm/i.test(size) &&
+    Number.isInteger(Number(product.sourcePage)) && Number(product.sourcePage) >= 2 && Number(product.sourcePage) <= 5
+}
+
 /**
  * @param parent  the product family
  * @param chrome  { image, heightMm } — the header strip lifted off the imported
@@ -66,7 +81,12 @@ export function defaultCategoryFor(parent, chrome = null) {
       const positioned = items.filter(p => p.isPage && p.origin === 'manual-image-page' && Number.isInteger(p.pagePosition) && p.pagePosition > 0)
       const positionedIds = new Set(positioned.map(p => p.id))
       items = items.filter(p => !positionedIds.has(p.id))
-      items=groupSharedUsage(orderTechnicalSpace(items))
+      // Known source sheets already provide their printed order. Running those
+      // products through the family sorter first moves codes such as LS04N ahead
+      // of LS05 and breaks the supplier's two-row page grouping. Keep the source
+      // order for Light Stone; all ordinary imports retain the global sorter.
+      const hasLightStoneSource = items.some(isLightStoneProduct)
+      items=groupSharedUsage(hasLightStoneSource ? items : orderTechnicalSpace(items))
       const pages = []
       let rows = []          // rows waiting to be placed on the current page
       let cell = []          // products waiting to fill the current row
@@ -114,7 +134,7 @@ export function defaultCategoryFor(parent, chrome = null) {
         // cards from pages 2-3 in two rows of two, and keep the single product
         // plus its installation strip together on pages 4-5. The cover is an
         // isPage plate and is handled above, so the source order remains 1-5.
-        if (product.categoryId === 'light-stone-wall' && Number.isInteger(product.sourcePage)) {
+        if (isLightStoneProduct(product) && Number.isInteger(product.sourcePage)) {
           const sourcePage = product.sourcePage
           const sourceProducts = [product]
           while (itemIndex + 1 < items.length) {

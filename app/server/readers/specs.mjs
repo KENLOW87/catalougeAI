@@ -450,6 +450,7 @@ const lightStonePairSpec = (page, names, photos, options = {}) => ({
   id: `light-stone-wall-page-${page}`,
   title: `Light Stone Wall Panel page ${page}`,
   category: 'light-stone-wall',
+  sourceProfile: 'light-stone-wall',
   productShape: 'generic',
   builtin: true,
   sourcePriority: 25,
@@ -491,6 +492,7 @@ const LIGHT_STONE_SPECS = [
     id: 'light-stone-wall-cover',
     title: 'Light Stone Wall Panel cover / materials',
     category: 'light-stone-wall',
+    sourceProfile: 'light-stone-wall',
     builtin: true,
     nonProductPages: [1],
     nonProductEvidence: { 1: [/LIGHTSTONEWALLPANEL/] },
@@ -530,8 +532,10 @@ const LIGHT_STONE_SPECS = [
       main: lightStonePanel(6, 49, 43, 86),
       example: lightStonePanel(50, 49, 43, 86),
       examples: [
-        { x: 111, y: 49, w: 36, h: 42 },
-        { x: 149, y: 49, w: 55, h: 42 },
+        // Stop above the printed "can be bend & flexibility" caption. The
+        // caption is source text, not part of either usage photograph.
+        { x: 111, y: 49, w: 36, h: 39 },
+        { x: 149, y: 49, w: 55, h: 39 },
         { x: 111, y: 95, w: 93, h: 33 },
       ],
     }], {

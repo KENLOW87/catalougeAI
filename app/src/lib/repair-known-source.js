@@ -6,6 +6,7 @@ import { PVC_SEED } from './categories/pvc.js'
 // an arbitrary catalogue or overwrite an existing edited record.
 export function repairLegacyAccessoriesProducts(categoryId, products) {
   if (!Array.isArray(products)) return products
+  products = repairLegacyLightStoneProducts(categoryId, products)
   if (categoryId === 'carbon-crystal-wall') return repairCarbonCrystalProfileRows(products)
   if (categoryId === 'pvc-marble-sheet-3d') return repairPvc3dCombinedProducts(products)
   if (categoryId !== 'accessories') return products
@@ -37,6 +38,66 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
     sourcePreserved: true,
   }
   return [...products.slice(0, before), restored, ...products.slice(before)]
+}
+
+// Light Stone was occasionally uploaded into the PU Stone destination before
+// sourceProfile became durable. Those records still carry the printed LS/ICP
+// codes and source pages, so repair the source identity on load and let the
+// source-aware paginator restore the two-up layout. Do not move the records to a
+// different catalogue; the user's chosen destination remains authoritative.
+const LIGHT_STONE_CODES = new Map([
+  ['LS01', 2], ['LS02', 2], ['LS03', 2], ['LS04', 2],
+  ['LS05', 3], ['LS06', 3], ['LS04N', 3], ['LS05N', 3],
+  ['LS07', 4], ['ICP01', 5],
+])
+
+const LIGHT_STONE_ASSET_VERSION = '2026-11-27-source-crops-v1'
+const lightStoneAsset = (code, role) => `/assets/source/light-stone-wall/${code.toLowerCase()}-${role}.png?v=${LIGHT_STONE_ASSET_VERSION}`
+
+function lightStoneCode(product) {
+  const value = String(product?.code ?? product?.name ?? '').trim().toUpperCase()
+  const match = value.match(/^(LS\d{2}N?|ICP\d{2})\b/)
+  return match?.[1] ?? null
+}
+
+function repairLegacyLightStoneProducts(categoryId, products) {
+  const candidates = products.filter(product => LIGHT_STONE_CODES.has(lightStoneCode(product)))
+  if (candidates.length < 10) return products
+  let changed = false
+  const repaired = products.map(product => {
+    const code = lightStoneCode(product)
+    if (!code) return product
+    const sourcePage = LIGHT_STONE_CODES.get(code)
+    const oldPhoto = product.photo
+    const oldExamples = product.examples ?? []
+    const examples = [
+      { image: lightStoneAsset(code, 'backlit'), caption: '', role: 'usage', associationEvidence: 'verified-source-layout', sourceOwnerName: product.name },
+    ]
+    if (code === 'ICP01') examples.push(
+      { image: lightStoneAsset(code, 'example-1'), caption: '', role: 'usage', associationEvidence: 'verified-source-layout', sourceOwnerName: product.name },
+      { image: lightStoneAsset(code, 'example-2'), caption: '', role: 'usage', associationEvidence: 'verified-source-layout', sourceOwnerName: product.name },
+      { image: lightStoneAsset(code, 'example-3'), caption: '', role: 'usage', associationEvidence: 'verified-source-layout', sourceOwnerName: product.name },
+    )
+    const next = {
+      ...product,
+      sourceProfile: 'light-stone-wall', sourcePage,
+      photo: lightStoneAsset(code, 'photo'),
+      photoOriginal: product.photoOriginal ?? oldPhoto,
+      sourcePhotoBackup: product.sourcePhotoBackup ?? oldPhoto,
+      examples,
+      examplesTrusted: true,
+      sourceExamplesBackup: product.sourceExamplesBackup ?? oldExamples,
+      sourcePreserved: true,
+      photoTreatmentMode: 'trusted-source-crop',
+    }
+    if (sourcePage === 4) next.supportStrip = lightStoneAsset('LS07', 'support')
+    if (sourcePage === 5) next.supportStrip = lightStoneAsset('ICP01', 'support')
+    if (sourcePage === 4) next.layoutRowGroup = 'light-stone-wall-page-4'
+    if (sourcePage === 5) next.layoutRowGroup = 'light-stone-wall-page-5'
+    if (JSON.stringify(next) !== JSON.stringify(product)) changed = true
+    return next
+  })
+  return changed ? repaired : products
 }
 
 // PVC Marble Sheet 3D source pages print one composed product image containing
