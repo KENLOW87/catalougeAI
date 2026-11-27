@@ -44,7 +44,7 @@ const execFileAsync = promisify(execFile)
 // Shared import-performance version for every deterministic catalogue reader.
 // The cache must be invalidated globally when the common render path changes;
 // it is not an Acoustic-only fix.
-const INGEST_CACHE_VERSION = 'local-read-v11-source-crops-200dpi'
+const INGEST_CACHE_VERSION = 'local-read-v12-live-profile-routing'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the
@@ -166,6 +166,11 @@ export function sourceProfileForFilename(filename = '') {
 // their own source evidence instead of whichever catalogue was open.
 export function sourceProfileForCategory(category = '') {
   const id = String(category).trim().toLowerCase()
+  // The dashboard normally sends the stable id, but older/live clients may
+  // send the visible category title. Treat that as the same explicit hint so
+  // a known 3D PDF cannot fall through to the generic 200 DPI/full-page path.
+  const normalized = id.replace(/[&/]+/g, ' ').replace(/\s+/g, ' ')
+  if (normalized === 'pvc marble sheet 3d') return 'pvc-marble-sheet-3d'
   return {
     'accessories': 'accessories-march',
     'pvc-marble-sheet': 'pvc-marble-sheet-grid',

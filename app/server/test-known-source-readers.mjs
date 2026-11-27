@@ -10,6 +10,7 @@ assert.equal(sourceProfileForFilename('PVC Marble Sheet (Jan 2026).pdf'), 'pvc-m
 assert.equal(sourceProfileForFilename('Acoustic Panel (August 2025).pdf'), 'acoustic-panel')
 assert.equal(sourceProfileForFilename('Acoustic Panel (Nov 2024).pdf'), 'acoustic-panel-2024')
 assert.equal(sourceProfileForCategory('pvc-marble-sheet-3d'), 'pvc-marble-sheet-3d')
+assert.equal(sourceProfileForCategory('PVC Marble Sheet 3D'), 'pvc-marble-sheet-3d')
 assert.equal(sourceProfileForCategory('pvc-foam-board'), 'pvc-foam-board')
 assert.equal(sourceProfileForCategory('accessories'), 'accessories-march')
 
