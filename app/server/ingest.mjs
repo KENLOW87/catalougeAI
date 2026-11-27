@@ -808,6 +808,9 @@ export async function ingestPdf(pdfInput, onProgress = () => {}, intoCategory = 
       sourceProfile = await sourceProfileForPdf(pdfPath, filename)
       localOnlyKnownCatalogue = Boolean(sourceProfile)
     }
+    onProgress(sourceProfile
+      ? `Using local reader profile: ${sourceProfile}…`
+      : 'No known local reader matched; checking the generic layout…')
 
     // Cache only layouts that are fully deterministic and explicitly known.
     // Unknown PDFs may depend on AI interpretation and must always go through

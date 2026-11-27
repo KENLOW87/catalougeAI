@@ -481,10 +481,15 @@ app.post('/api/ingest-pdf/start', express.raw({ type: 'application/pdf', limit: 
   if (!Buffer.isBuffer(req.body) || !req.body.length) {
     return res.status(400).json({ error: 'PDF bytes required' })
   }
+  // Render/proxy layers have occasionally dropped custom X-* headers. Keep
+  // query parameters as a redundant, visible routing channel so a known
+  // catalogue never falls through to the slow generic reader.
+  const into = String(req.headers['x-catalogue-into'] ?? req.query?.into ?? '') || null
+  const filename = String(req.headers['x-catalogue-filename'] ?? req.query?.filename ?? '')
   const job = queuePdfIngest({
     bytes: req.body,
-    into: String(req.headers['x-catalogue-into'] ?? '') || null,
-    filename: String(req.headers['x-catalogue-filename'] ?? ''),
+    into,
+    filename,
     expectedBytes: Number(req.headers['x-upload-bytes']) || req.body.length,
   })
   res.status(202).json({ jobId: job.id, status: job.status })
@@ -513,8 +518,8 @@ app.post('/api/ingest-pdf', express.raw({ type: 'application/pdf', limit: '300mb
   const bytes = req.body
   req.body = {
     pdf: bytes,
-    into: String(req.headers['x-catalogue-into'] ?? '') || null,
-    filename: String(req.headers['x-catalogue-filename'] ?? ''),
+    into: String(req.headers['x-catalogue-into'] ?? req.query?.into ?? '') || null,
+    filename: String(req.headers['x-catalogue-filename'] ?? req.query?.filename ?? ''),
     bytes: Number(req.headers['x-upload-bytes']) || bytes.length,
   }
   return ingestHandler(req, res)

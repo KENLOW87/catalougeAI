@@ -260,7 +260,10 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       const isImage = file.type.startsWith('image/')
       const payload = await (isImage ? readImageFile(file) : null)
       const pdfUpload = !isImage
-      const res = await fetch(apiUrl(isImage ? '/api/ingest-image' : '/api/ingest-pdf/start'), {
+      const pdfRoute = pdfUpload
+        ? `/api/ingest-pdf/start?into=${encodeURIComponent(importTarget ?? '')}&filename=${encodeURIComponent(file.name)}`
+        : '/api/ingest-image'
+      const res = await fetch(apiUrl(pdfRoute), {
         method: 'POST',
         signal: ctl.signal,
         headers: pdfUpload
