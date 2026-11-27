@@ -332,7 +332,10 @@ const pvc3dPage = (page, codes, panelCount) => {
   // Keep that complete source rectangle; splitting it into individual strips
   // makes the extracted catalogue look unlike the PDF and loses the intended
   // product presentation.
-  const drawing = { x: 128, y: 102, w: 72, h: 60 }
+  // The dimension sketch starts left of the product caption's right column.
+  // Keep the whole 9A/9B/9C block and begin below the final size line so no
+  // title text is pulled into the measurement crop.
+  const drawing = { x: 118, y: 105, w: 84, h: 58 }
   const display = { x: 0, y: 162, w: 210, h: 135 }
   const labels = codes.map(code => String(code).replace(/^3D-/i, ''))
   const displayName = labels.length === 2
