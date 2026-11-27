@@ -445,6 +445,10 @@ app.post('/api/ingest', ingestHandler)
 // the work and poll a short-lived job endpoint instead.
 const pdfJobs = new Map()
 const PDF_JOB_TTL = 30 * 60 * 1000
+// A completed review can contain many rendered image data URLs. Sending that
+// JSON as one response is large enough for Render's proxy to answer 502 even
+// though the extraction itself succeeded. Keep each polling response small.
+const PDF_JOB_RESULT_PART_SIZE = 256 * 1024
 
 function prunePdfJobs() {
   const now = Date.now()
@@ -463,8 +467,10 @@ function queuePdfIngest({ bytes, into, filename, expectedBytes }) {
   pdfJobs.set(job.id, job)
   void (async () => {
     try {
-      job.result = await ingestPdf(job.bytes, message => { job.progress = message }, into,
+      const result = await ingestPdf(job.bytes, message => { job.progress = message }, into,
         () => job.cancelled, filename, expectedBytes)
+      job.resultBytes = JSON.stringify(result)
+      job.resultParts = Math.max(1, Math.ceil(job.resultBytes.length / PDF_JOB_RESULT_PART_SIZE))
       job.status = job.cancelled ? 'cancelled' : 'complete'
     } catch (error) {
       job.status = job.cancelled || error?.name === 'IngestCancelled' ? 'cancelled' : 'failed'
@@ -501,7 +507,17 @@ app.get('/api/ingest-pdf/jobs/:id', (req, res) => {
   if (job.status === 'working') return res.json({ status: job.status, progress: job.progress })
   if (job.status === 'cancelled') return res.json({ status: job.status, error: 'Import cancelled.' })
   if (job.status === 'failed') return res.json({ status: job.status, error: job.error })
-  return res.json({ status: job.status, result: job.result })
+  const requestedPart = Number(req.query.part)
+  if (Number.isInteger(requestedPart) && requestedPart >= 0 && requestedPart < job.resultParts) {
+    const start = requestedPart * PDF_JOB_RESULT_PART_SIZE
+    return res.json({
+      status: job.status,
+      index: requestedPart,
+      total: job.resultParts,
+      part: job.resultBytes.slice(start, start + PDF_JOB_RESULT_PART_SIZE),
+    })
+  }
+  return res.json({ status: job.status, totalParts: job.resultParts, resultBytes: job.resultBytes.length })
 })
 
 app.delete('/api/ingest-pdf/jobs/:id', (req, res) => {

@@ -299,16 +299,50 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       const started = await res.json()
       if (!started.jobId) throw new Error('The server did not return an upload job.')
       ingestJobRef.current = started.jobId
-      for (;;) {
-        const statusRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}`), { signal: ctl.signal })
-        if (!statusRes.ok) {
-          const detail = await statusRes.text().catch(() => '')
-          throw new Error(`Upload job failed (${statusRes.status}): ${detail.slice(0, 240)}`)
+      let transientPollFailures = 0
+      const readJobResult = async job => {
+        if (job.result) return job.result // compatibility with older servers
+        const total = Number(job.totalParts) || 0
+        if (!total) throw new Error('The upload finished without a review result.')
+        const parts = []
+        for (let index = 0; index < total; index++) {
+          const partRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}?part=${index}`), { signal: ctl.signal })
+          if (!partRes.ok) throw new Error(`Could not receive upload result part ${index + 1} (${partRes.status}).`)
+          const part = await partRes.json()
+          parts[part.index] = part.part
+          setProgress(`Receiving the review result — ${index + 1} of ${total}…`)
         }
+        return JSON.parse(parts.join(''))
+      }
+      for (;;) {
+        let statusRes
+        try {
+          statusRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}`), { signal: ctl.signal })
+        } catch (error) {
+          if (error?.name === 'AbortError') throw error
+          transientPollFailures += 1
+          if (transientPollFailures <= 40) {
+            setProgress(`Reconnecting to the upload job… (${transientPollFailures})`)
+            await new Promise(resolve => setTimeout(resolve, Math.min(3000, 700 + transientPollFailures * 100)))
+            continue
+          }
+          throw error
+        }
+        if (!statusRes.ok) {
+          if ([502, 503, 504].includes(statusRes.status) && transientPollFailures < 40) {
+            transientPollFailures += 1
+            setProgress(`Reconnecting to the upload job… (${transientPollFailures})`)
+            await new Promise(resolve => setTimeout(resolve, Math.min(3000, 700 + transientPollFailures * 100)))
+            continue
+          }
+          const detail = await statusRes.text().catch(() => '')
+          throw new Error(`Upload job failed (${statusRes.status}): ${detail.slice(0, 240) || 'the server stopped responding.'}`)
+        }
+        transientPollFailures = 0
         const job = await statusRes.json()
         if (job.progress) setProgress(job.progress)
         if (job.status === 'complete') {
-          await showResult(job.result)
+          await showResult(await readJobResult(job))
           break
         }
         if (job.status === 'failed' || job.status === 'cancelled') {
