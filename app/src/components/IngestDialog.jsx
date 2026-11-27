@@ -300,17 +300,41 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
       if (!started.jobId) throw new Error('The server did not return an upload job.')
       ingestJobRef.current = started.jobId
       let transientPollFailures = 0
+      const transientStatuses = new Set([429, 502, 503, 504])
+      const retryDelay = (response, attempt) => {
+        const header = response?.headers?.get('retry-after')
+        const seconds = Number(header)
+        if (Number.isFinite(seconds) && seconds >= 0) return Math.min(15_000, Math.max(1_000, seconds * 1000))
+        const date = header ? Date.parse(header) : NaN
+        if (Number.isFinite(date)) return Math.min(15_000, Math.max(1_000, date - Date.now()))
+        return Math.min(8_000, 1_000 + attempt * 500)
+      }
+      const waitForRetry = async (response, attempt, label) => {
+        const delay = retryDelay(response, attempt)
+        setProgress(`${label} — reconnecting in ${Math.ceil(delay / 1000)}s…`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
       const readJobResult = async job => {
         if (job.result) return job.result // compatibility with older servers
         const total = Number(job.totalParts) || 0
         if (!total) throw new Error('The upload finished without a review result.')
         const parts = []
         for (let index = 0; index < total; index++) {
-          const partRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}?part=${index}`), { signal: ctl.signal })
-          if (!partRes.ok) throw new Error(`Could not receive upload result part ${index + 1} (${partRes.status}).`)
-          const part = await partRes.json()
-          parts[part.index] = part.part
-          setProgress(`Receiving the review result — ${index + 1} of ${total}…`)
+          for (;;) {
+            const partRes = await fetch(apiUrl(`/api/ingest-pdf/jobs/${started.jobId}?part=${index}`), { signal: ctl.signal })
+            if (partRes.ok) {
+              const part = await partRes.json()
+              parts[part.index] = part.part
+              setProgress(`Receiving the review result — ${index + 1} of ${total}…`)
+              break
+            }
+            if (transientStatuses.has(partRes.status) && transientPollFailures < 40) {
+              transientPollFailures += 1
+              await waitForRetry(partRes, transientPollFailures, `Receiving result part ${index + 1} of ${total}`)
+              continue
+            }
+            throw new Error(`Could not receive upload result part ${index + 1} (${partRes.status}).`)
+          }
         }
         return JSON.parse(parts.join(''))
       }
@@ -329,10 +353,9 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
           throw error
         }
         if (!statusRes.ok) {
-          if ([502, 503, 504].includes(statusRes.status) && transientPollFailures < 40) {
+          if (transientStatuses.has(statusRes.status) && transientPollFailures < 40) {
             transientPollFailures += 1
-            setProgress(`Reconnecting to the upload job… (${transientPollFailures})`)
-            await new Promise(resolve => setTimeout(resolve, Math.min(3000, 700 + transientPollFailures * 100)))
+            await waitForRetry(statusRes, transientPollFailures, 'Reconnecting to the upload job')
             continue
           }
           const detail = await statusRes.text().catch(() => '')
@@ -348,7 +371,9 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
         if (job.status === 'failed' || job.status === 'cancelled') {
           throw new Error(job.error || 'PDF import was cancelled.')
         }
-        await new Promise(resolve => setTimeout(resolve, 900))
+        // A slower heartbeat avoids triggering the hosting proxy's request
+        // limiter on long PDF renders. The job itself continues server-side.
+        await new Promise(resolve => setTimeout(resolve, 1500))
       }
       return
 
