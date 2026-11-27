@@ -325,32 +325,40 @@ const PVC_MARBLE_SHEET_SPECS = [
 // of ONE product (1A/1B, 2A/2B, etc.); the lower installation photo is supporting
 // source material, not another card.
 const pvc3dPage = (page, codes, panelCount) => {
-  const x = panelCount === 2 ? 40 : 11
-  const w = panelCount === 2 ? 81 : 122
-  const panels = Array.from({ length: panelCount }, (_, i) => ({
-    x: x + (w / panelCount) * i + 0.5, y: 52, w: w / panelCount - 1, h: 98,
-  }))
-  const groups = codes.map(code => String(code).replace(/[A-Z]$/i, ''))
-  const labels = codes.map(code => String(code))
+  const photo = panelCount === 2
+    ? { x: 40, y: 52, w: 81, h: 98 }
+    : { x: 11, y: 52, w: 122, h: 98 }
+  // The supplier's product picture is already a composed A/B/C panel image.
+  // Keep that complete source rectangle; splitting it into individual strips
+  // makes the extracted catalogue look unlike the PDF and loses the intended
+  // product presentation.
+  const drawing = { x: 128, y: 102, w: 72, h: 60 }
+  const display = { x: 0, y: 162, w: 210, h: 135 }
+  const labels = codes.map(code => String(code).replace(/^3D-/i, ''))
+  const displayName = labels.length === 2
+    ? `3D-${labels[0]} & ${labels[1]}`
+    : `3D-${labels.slice(0, -1).join(', ')} & ${labels.at(-1)}`
   return {
     id: `pvc-marble-sheet-3d-page-${page}`,
     title: `PVC Marble Sheet 3D product page ${page}`,
     sourceProfile: 'pvc-marble-sheet-3d',
     category: 'pvc-marble-sheet-3d',
-    productShape: 'generic', builtin: true, expectedAnchorCount: codes.length,
-    anchor: { type: 'fixed', pages: [page], boxes: panels },
+    productShape: 'generic', builtin: true, expectedAnchorCount: 1,
+    anchor: { type: 'fixed', pages: [page], boxes: [{ x: 0, y: 35, w: 210, h: 125 }] },
     kinds: [{ id: `pvc-marble-sheet-3d-${page}-cards`, fields: [
-      // The printed A/B/C suffix identifies the variation, not a new product.
-      // Keep the full printed code as the variation label while the base code
-      // becomes the single product name in the review and catalogue.
-      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: groups, box: { x: 0, y: 0, w: 1, h: 1 } },
+      // A/B/C are printed labels inside one composed product image, not
+      // separate product photos or separate product records.
+      { key: 'name', type: 'text', required: true, absolute: true, valueByAnchor: [displayName], box: { x: 0, y: 0, w: 1, h: 1 } },
       { key: 'subtitle', type: 'text', required: true, absolute: true,
-        valueByAnchor: codes.map(() => '1200mm(W) x 3000mm(L) x 3mm(T)'), box: { x: 0, y: 0, w: 1, h: 1 } },
-      { key: 'photo', type: 'photo', source: true, absolute: true, boxByAnchor: panels },
-    ], variantGroupByAnchor: groups, variantLabelByAnchor: labels }],
-    // A/B/C are visual variations of one product. These pages do not contain
-    // technical drawings, so a missing drawing must not block the import.
-    variantsRequireDrawing: false,
+        valueByAnchor: ['1200mm(W) x 3000mm(L) x 3mm(T)'], box: { x: 0, y: 0, w: 1, h: 1 } },
+      { key: 'photo', type: 'photo', source: true, absolute: true, box: photo },
+      { key: 'drawing', type: 'lineart', source: true, absolute: true, box: drawing },
+    ], examplesByAnchor: [[{
+      box: display, caption: '', role: 'usage', presentation: 'scene',
+      associationEvidence: 'verified-source-layout',
+    }]] }],
+    layoutFullRow: true,
+    sourceLayout: 'pvc-3d-combined-product',
   }
 }
 

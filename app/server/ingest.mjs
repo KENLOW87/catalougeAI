@@ -45,9 +45,9 @@ const execFileAsync = promisify(execFile)
 // The cache must be invalidated globally when the common render path changes;
 // it is not an Acoustic-only fix.
 // Bump whenever the stored shape of a known-source result changes. The 3D
-// variation grouping now carries trusted-photo metadata; reusing v12 would
-// silently resurrect the old blocked 23-panel result.
-const INGEST_CACHE_VERSION = 'local-read-v13-trusted-3d-variations'
+// reader now preserves each composed A/B/C source photo instead of reusing
+// the old split-panel extraction.
+const INGEST_CACHE_VERSION = 'local-read-v14-composed-3d-products'
 const INGEST_CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../.cache/ingest')
 
 // The PDF bytes are the identity of an import.  The supplier often uploads the

@@ -7,6 +7,7 @@ import { PVC_SEED } from './categories/pvc.js'
 export function repairLegacyAccessoriesProducts(categoryId, products) {
   if (!Array.isArray(products)) return products
   if (categoryId === 'carbon-crystal-wall') return repairCarbonCrystalProfileRows(products)
+  if (categoryId === 'pvc-marble-sheet-3d') return repairPvc3dCombinedProducts(products)
   if (categoryId !== 'accessories') return products
   products = repairMarch2026Page3Duplicate(products)
   products = repairPvcMeasurementDrawings(products)
@@ -36,6 +37,95 @@ export function repairLegacyAccessoriesProducts(categoryId, products) {
     sourcePreserved: true,
   }
   return [...products.slice(0, before), restored, ...products.slice(before)]
+}
+
+// PVC Marble Sheet 3D source pages print one composed product image containing
+// the A/B/C boards. A previous save split that image into narrow variation tiles,
+// which made the catalogue differ from the supplier PDF. Repair the saved records
+// from the trusted local source crops and keep one product row per source page.
+const PVC3D_SOURCE_ASSETS = {
+  2: ['3D-1A & 1B', '3d-1'],
+  3: ['3D-2A & 2B', '3d-2'],
+  4: ['3D-3A, 3B & 3C', '3d-3'],
+  5: ['3D-7A, 7B & 7C', '3d-7'],
+  6: ['3D-9A & 9B', '3d-9-2panel'],
+  7: ['3D-9A, 9B & 9C', '3d-9-3panel'],
+  8: ['3D-10C, 10B & 10A', '3d-10'],
+  9: ['3D-11A & 11B', '3d-11'],
+  10: ['3D-12A, 12B & 12C', '3d-12'],
+}
+
+function repairPvc3dCombinedProducts(products) {
+  const sourceRows = products.filter(product => PVC3D_SOURCE_ASSETS[Number(product?.sourcePage)] && !product?.isPage)
+  if (sourceRows.length < 2) return products
+
+  const byPage = new Map()
+  for (const product of sourceRows) {
+    const page = Number(product.sourcePage)
+    if (!byPage.has(page)) byPage.set(page, product)
+  }
+  if (byPage.size < 2) return products
+
+  let changed = false
+  const repairedByPage = new Map()
+  for (const [page, current] of byPage) {
+    const [name, key] = PVC3D_SOURCE_ASSETS[page]
+    const base = `/assets/source/pvc-marble-sheet-3d/${key}`
+    const photo = `${base}-photo.png?v=2026-11-27-combined-product`
+    const drawing = `${base}-drawing.png?v=2026-11-27-combined-product`
+    const display = `${base}-display.png?v=2026-11-27-combined-product`
+    const next = {
+      ...current,
+      name,
+      subtitle: current.subtitle || '1200mm(W) x 3000mm(L) x 3mm(T)',
+      third: current.third || 'PVC Marble | Gloss / Film',
+      photo,
+      photoOriginal: current.photoOriginal ?? current.photo,
+      sourcePhotoBackup: current.sourcePhotoBackup ?? current.photo,
+      drawing,
+      drawingOriginal: current.drawingOriginal ?? current.drawing,
+      sourceDrawingBackup: current.sourceDrawingBackup ?? current.drawing,
+      drawingPreserved: true,
+      examples: [{
+        image: display,
+        caption: '',
+        role: 'usage',
+        presentation: 'scene',
+        associationEvidence: 'verified-source-layout',
+        sourceOwnerName: name,
+      }],
+      examplesTrusted: true,
+      sourceExamplesBackup: current.sourceExamplesBackup ?? current.examples ?? [],
+      sourceLayout: 'pvc-3d-combined-product',
+      layoutFullRow: true,
+      sourcePreserved: true,
+      photoTreatmentMode: 'trusted-source-crop',
+      sourceVariationLabels: (current.finishes ?? current.variants ?? []).map(v => v.name).filter(Boolean),
+    }
+    delete next.finishes
+    delete next.variants
+    delete next.variantTechnical
+    delete next.variantsRequireDrawing
+    if (JSON.stringify(next) !== JSON.stringify(current)) changed = true
+    repairedByPage.set(page, next)
+  }
+
+  const seenPages = new Set()
+  const result = []
+  for (const product of products) {
+    const page = Number(product?.sourcePage)
+    if (!repairedByPage.has(page)) {
+      result.push(product)
+      continue
+    }
+    if (seenPages.has(page)) {
+      changed = true
+      continue
+    }
+    seenPages.add(page)
+    result.push(repairedByPage.get(page))
+  }
+  return changed ? result : products
 }
 
 // A legacy Accessories save sometimes promoted the two White-only L Profile
