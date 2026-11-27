@@ -1,5 +1,7 @@
 # Project working rules
 
+- Once a requested change is verified, commit it and push it to the live remote in the same task. Do not leave a verified fix only in the local worktree; report the live push result before handing back to the user.
+
 - Accessories is ONE catalogue. Never expose or recreate LED/PVC Marble category tabs, child catalogues, or separate upload destinations. The March 2026 PDF keeps every page and product in source order under `accessories`; legacy `accessories-led` and `pvc-marble` browser records migrate into it without losing stable IDs or media. Reader layouts may remain distinct internally only to parse and render their different product shapes.
 
 These rules record the user's instruction to preserve completed fixes and avoid repeating earlier mistakes. Apply them to all future work in this project.
