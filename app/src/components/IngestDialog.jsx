@@ -152,7 +152,7 @@ export default function IngestDialog({ existingByCategory, intoCategory, catalog
         for (const key of ['finishes', 'variants']) {
           if (Array.isArray(product[key])) {
             product[key] = product[key].map(item => ({ ...item }))
-            for (const item of product[key]) if (item.photo && !((product.readBy === 'rules' && product.sourcePage != null && item.sourceBox) || item.photoTreatmentMode === 'preserve-scene')) jobs.push({ product, owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
+            for (const item of product[key]) if (item.photo && !((product.readBy === 'rules' && product.sourcePage != null && item.sourceBox) || ['preserve-scene', 'trusted-source-crop'].includes(item.photoTreatmentMode))) jobs.push({ product, owner: item, key: 'photo', label: `${product.name || 'product'} ${item.name || 'variant'}` })
           }
         }
       }

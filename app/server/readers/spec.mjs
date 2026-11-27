@@ -924,8 +924,15 @@ export async function readWithSpec(page, spec) {
       name: product.__variantLabel || `Variation ${variantGroups.size + 1}`,
       photo: product.photo ?? null,
       drawing: product.drawing ?? null,
-      sourceBox: product.sourceBox ?? null,
+      // The source rectangle is recorded before the variation is grouped.
+      // `sourceBox` is not copied onto the temporary rule product itself, so
+      // retain the measured photo box from __sourceBoxes here. Without it the
+      // review cannot recognise a trusted 3D crop and runs background removal
+      // on every A/B/C panel again.
+      sourceBox: product.sourceBox ?? product.__sourceBoxes?.photo ?? null,
       sourceDrawingBox: product.sourceDrawingBox ?? null,
+      photoTreatmentMode: product.photoTreatmentMode ?? 'trusted-source-crop',
+      sourcePreserved: true,
       third: product.third ?? '',
     }
     if (!combined) {
