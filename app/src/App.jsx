@@ -566,27 +566,41 @@ export default function App() {
 
   useEffect(() => { if (!print) refreshPublished() }, [])
 
-  // Publish every non-empty browser catalogue in one request. The server skips
-  // empty entries and never deletes an older published snapshot omitted from the
-  // request, so a blank catalogue cannot wipe an already published PDF.
+  // Publish every non-empty browser catalogue as separate requests. Sending all
+  // image-heavy catalogues in one JSON body made the Render proxy return 502
+  // before the server could even start Supabase uploads. Sequential requests
+  // keep each body bounded, show progress, and preserve already-published
+  // catalogues if one large catalogue fails. Empty catalogues are not included.
   const publishAll = async () => {
     const catalogues = catalogueList(byCategory, chromeByCategory, deletedCategories, customCategories)
       .map(c => ({ ...c, title: resolveCategory(c.category, c.chrome, customCategories).title }))
     if (!catalogues.length) { setBusy('Nothing to publish yet — no catalogue has products.'); return }
     if (publishing) return
     setPublishing(true)
-    setBusy(`Publishing ${catalogues.length} catalogue${catalogues.length === 1 ? '' : 's'}…`)
+    setBusy(`Publishing 0/${catalogues.length} catalogues…`)
     try {
-      const res = await fetch(apiUrl('/api/publish-all'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogues }),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
-      const skipped = body.skipped?.length ?? 0
-      setBusy(`Published ${body.published?.length ?? 0} catalogue${body.published?.length === 1 ? '' : 's'} — live on the public site.` +
-        (skipped ? ` Skipped ${skipped} empty catalogue${skipped === 1 ? '' : 's'}.` : ''))
+      const published = []
+      const failed = []
+      for (const [index, entry] of catalogues.entries()) {
+        setBusy(`Publishing ${index + 1}/${catalogues.length}: ${entry.title}…`)
+        try {
+          const res = await fetch(apiUrl(`/api/publish/${encodeURIComponent(entry.category)}`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ products: entry.products, chrome: entry.chrome, title: entry.title }),
+          })
+          const body = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+          published.push(entry.title)
+        } catch (error) {
+          failed.push(`${entry.title}: ${error.message}`)
+        }
+      }
+      if (failed.length) {
+        setBusy(`Published ${published.length}/${catalogues.length}. Failed: ${failed.join(' · ')}`)
+      } else {
+        setBusy(`Published ${published.length} catalogue${published.length === 1 ? '' : 's'} — live on the public site.`)
+      }
       await refreshPublished()
     } catch (e) {
       setBusy(`Publish all failed: ${e.message}`)
